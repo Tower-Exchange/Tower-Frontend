@@ -23,7 +23,6 @@ import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
 import useBridge from "@/lib/hooks/useBridge";
 import { SUPPORTED_CHAINS, getBridgeFees } from "@/lib/bridgeService";
 import { TransactionConfirmation } from "./TransactionConfirmation";
-import { AppErrorModal } from "@/components/AppErrorModal";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import chatLogo from "@/public/assets/chat_logo.svg";
@@ -33,7 +32,6 @@ interface Message {
   text: string;
   isUser: boolean;
   isTyping?: boolean;
-  error?: string;
 }
 
 interface ChatSession {
@@ -72,6 +70,24 @@ const formatSessionTitle = (text: string) => {
 const isGenericSessionTitle = (title: string) => {
   const normalizedTitle = title.trim();
   return !normalizedTitle || GENERIC_CHAT_TITLES.has(normalizedTitle);
+};
+
+const toAssistantErrorReply = (
+  message: string,
+  fallback = "Something went wrong. Please try again.",
+) => {
+  const cleaned = message.replace(/\s+/g, " ").replace(/^error:\s*/i, "").trim();
+  if (!cleaned) {
+    return fallback;
+  }
+
+  const firstSentence = cleaned.match(/^.*?[.!?](?:\s|$)/)?.[0].trim() ?? cleaned;
+  const reply =
+    firstSentence.length > 280
+      ? `${firstSentence.slice(0, 277).trimEnd()}...`
+      : firstSentence;
+
+  return /[.!?]$/.test(reply) ? reply : `${reply}.`;
 };
 
 const getTokenDecimalsByAddress = (tokenAddress?: string) => {
@@ -313,7 +329,6 @@ export const AIChat = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [activePrompt, setActivePrompt] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(
     null,
   );
@@ -335,6 +350,20 @@ export const AIChat = () => {
   const [showVoiceChatComingSoon, setShowVoiceChatComingSoon] = useState(false);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
+  const reportedSwapErrorRef = useRef<string | null>(null);
+  const reportedBridgeErrorRef = useRef<string | null>(null);
+
+  const pushAssistantMessage = useCallback((text: string) => {
+    const reply = toAssistantErrorReply(text);
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: Date.now() + Math.floor(Math.random() * 1000),
+        text: reply,
+        isUser: false,
+      },
+    ]);
+  }, []);
 
   // Load sessions from localStorage
   const loadSessions = (walletAddress: string): ChatSession[] => {
@@ -461,10 +490,11 @@ export const AIChat = () => {
       localStorage.setItem("ai-session-id", newSessionId);
       setMessages([]);
       setMessage("");
-      setError(null);
       setShowSwapConfirmation(false);
       setShowBridgeConfirmation(false);
       setActiveBridgeRequest(null);
+      reportedSwapErrorRef.current = null;
+      reportedBridgeErrorRef.current = null;
       swapExecution.resetState();
       bridgeHook.resetBridgeState();
       setProfileImageError(false);
@@ -521,10 +551,11 @@ export const AIChat = () => {
           // No more sessions, clear the chat area
           setMessages([]);
           setMessage("");
-          setError(null);
           setShowSwapConfirmation(false);
           setShowBridgeConfirmation(false);
           setActiveBridgeRequest(null);
+          reportedSwapErrorRef.current = null;
+          reportedBridgeErrorRef.current = null;
           swapExecution.resetState();
           bridgeHook.resetBridgeState();
           setSessionId("");
@@ -654,11 +685,29 @@ export const AIChat = () => {
     if (!text.trim()) return;
     const walletAddress = user?.wallet?.address?.toLowerCase();
     if (!walletAddress) {
-      setError("Please connect your wallet first");
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now(), text, isUser: true },
+        {
+          id: Date.now() + 1,
+          text: toAssistantErrorReply("Please connect your wallet first"),
+          isUser: false,
+        },
+      ]);
+      setMessage("");
       return;
     }
     if (!sessionId) {
-      setError("Chat session not initialized");
+      setMessages((prev) => [
+        ...prev,
+        { id: Date.now(), text, isUser: true },
+        {
+          id: Date.now() + 1,
+          text: toAssistantErrorReply("Chat session not initialized"),
+          isUser: false,
+        },
+      ]);
+      setMessage("");
       return;
     }
 
@@ -671,7 +720,6 @@ export const AIChat = () => {
     setMessages((prev) => [...prev, userMessage]);
     setMessage("");
     setIsLoading(true);
-    setError(null);
 
     try {
       // Detect user intent to enable appropriate features
@@ -867,7 +915,7 @@ export const AIChat = () => {
                         executorFeeAmount,
                       },
                     );
-                    setError(
+                    pushAssistantMessage(
                       "Swap confirmed, but fee tracking could not be completed because the executor fee details were missing.",
                     );
                   } else {
@@ -909,7 +957,7 @@ export const AIChat = () => {
                           "Executor swap fee tracking failed",
                           feeResult.error,
                         );
-                        setError(
+                        pushAssistantMessage(
                           "Swap confirmed, but fee tracking failed. Please contact support with your transaction hash.",
                         );
                       }
@@ -918,7 +966,7 @@ export const AIChat = () => {
                         "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Error submitting platform fee:",
                         feeError,
                       );
-                      setError(
+                      pushAssistantMessage(
                         "Swap confirmed, but fee tracking failed. Please contact support with your transaction hash.",
                       );
                     }
@@ -963,7 +1011,9 @@ export const AIChat = () => {
 
         if (isSolanaSourceChain && !isSolanaConnected) {
           openSolanaConnectModal();
-          setError("Please connect your Solana wallet first.");
+          setShowBridgeConfirmation(false);
+          setActiveBridgeRequest(null);
+          pushAssistantMessage("Please connect your Solana wallet first.");
         } else {
           const connectedSourceAddress = isSolanaSourceChain
             ? solanaAddress || ""
@@ -973,7 +1023,9 @@ export const AIChat = () => {
             : sourceAddress.toLowerCase() === connectedSourceAddress.toLowerCase();
 
           if (!isMatchingConnectedWallet) {
-            setError(
+            setShowBridgeConfirmation(false);
+            setActiveBridgeRequest(null);
+            pushAssistantMessage(
               isSolanaSourceChain
                 ? "Bridge source address must match your connected Solana wallet before signing."
                 : "Bridge source address must match your connected wallet before signing.",
@@ -981,7 +1033,9 @@ export const AIChat = () => {
           } else {
             try {
               if (bridgeRequest.toChain === "solana" && !toAddress) {
-                setError(
+                setShowBridgeConfirmation(false);
+                setActiveBridgeRequest(null);
+                pushAssistantMessage(
                   "Please include a Solana receiving address to continue.",
                 );
                 return;
@@ -1055,16 +1109,9 @@ export const AIChat = () => {
                   status: result.status === "pending" ? "Pending" : "Recorded",
                   activityId: activityResult.id ?? null,
                 });
-              } else {
-                setError(result.error || "Bridge transaction failed.");
               }
             } catch (bridgeError) {
               console.error("Bridge execution error:", bridgeError);
-              setError(
-                bridgeError instanceof Error
-                  ? bridgeError.message
-                  : "Bridge transaction failed.",
-              );
             }
           }
         }
@@ -1108,15 +1155,7 @@ export const AIChat = () => {
     } catch (err) {
       const errorMessage =
         err instanceof Error ? err.message : "Failed to get response";
-      setError(errorMessage);
-
-      const errorMsg: Message = {
-        id: Date.now() + 1,
-        text: "Sorry, I encountered an error. Please try again.",
-        isUser: false,
-        error: errorMessage,
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      pushAssistantMessage(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -1128,23 +1167,52 @@ export const AIChat = () => {
     handleSendMessage(prompt);
   };
 
-  const dismissMessage = (messageId: number) => {
-    setMessages((prevMessages) =>
-      prevMessages.filter((msg) => msg.id !== messageId),
-    );
-  };
-
   const handleReset = () => {
     setActivePrompt(null);
     setMessages([]);
     setIsLoading(false);
-    setError(null);
     setShowSwapConfirmation(false);
     setShowBridgeConfirmation(false);
     setActiveBridgeRequest(null);
+    reportedSwapErrorRef.current = null;
+    reportedBridgeErrorRef.current = null;
     swapExecution.resetState();
     bridgeHook.resetBridgeState();
   };
+
+  useEffect(() => {
+    if (swapExecution.status !== "error") {
+      if (swapExecution.status === "idle") {
+        reportedSwapErrorRef.current = null;
+      }
+      return;
+    }
+
+    const message = swapExecution.error || "The swap could not be completed.";
+    if (reportedSwapErrorRef.current === message) {
+      return;
+    }
+
+    reportedSwapErrorRef.current = message;
+    pushAssistantMessage(message);
+    setShowSwapConfirmation(false);
+  }, [pushAssistantMessage, swapExecution.error, swapExecution.status]);
+
+  useEffect(() => {
+    if (!bridgeHook.error) {
+      reportedBridgeErrorRef.current = null;
+      return;
+    }
+
+    if (reportedBridgeErrorRef.current === bridgeHook.error) {
+      return;
+    }
+
+    reportedBridgeErrorRef.current = bridgeHook.error;
+    pushAssistantMessage(bridgeHook.error);
+    setShowBridgeConfirmation(false);
+    setActiveBridgeRequest(null);
+  }, [bridgeHook.error, pushAssistantMessage]);
 
   const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -1267,7 +1335,8 @@ export const AIChat = () => {
       )
     : null;
 
-  const renderSwapConfirmationRow = () => (
+  const renderSwapConfirmationRow = () =>
+    swapExecution.status === "error" ? null : (
     <div className="flex justify-start gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
         <Image
@@ -1292,9 +1361,10 @@ export const AIChat = () => {
         />
       </div>
     </div>
-  );
+    );
 
-  const renderBridgeConfirmationRow = () => (
+  const renderBridgeConfirmationRow = () =>
+    bridgeHook.error ? null : (
     <div className="flex justify-start gap-3">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-secondary">
         <Image
@@ -1448,12 +1518,6 @@ export const AIChat = () => {
           </button>
         </div>
 
-        <AppErrorModal
-          error={error}
-          onClose={() => setError(null)}
-          title="Operation failed"
-        />
-
         {typeof document !== "undefined" &&
           createPortal(
             <AnimatePresence>
@@ -1538,20 +1602,8 @@ export const AIChat = () => {
                             : msg.text === "Trading Volume"
                               ? "rounded-[20px] border border-border bg-card/92 p-4 text-foreground backdrop-blur-xl sm:rounded-[24px]"
                               : "rounded-[20px] border border-border bg-card/92 px-4 py-4 text-foreground backdrop-blur-xl sm:rounded-[24px] sm:px-5"
-                        } ${msg.error ? "pr-10 sm:pr-11" : ""}`}
+                        }`}
                       >
-                        {msg.error && (
-                          <button
-                            type="button"
-                            onClick={() => dismissMessage(msg.id)}
-                            className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                            aria-label="Dismiss chat error"
-                            title={msg.error}
-                          >
-                            <X size={15} />
-                          </button>
-                        )}
-
                         {msg.text === "Trading Volume" ? (
                           <div>
                             <div className="mb-4 flex items-center justify-between">
