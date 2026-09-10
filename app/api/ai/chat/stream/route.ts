@@ -8,34 +8,24 @@ import { requireWalletSession } from "@/lib/server/walletSession";
 import { normalizeWalletAddress } from "@/lib/server/wallet";
 import {
   aiBackendUnconfiguredResponse,
-  getTowerAiAuthHeaders,
+  buildTowerAiChatRequestBody,
+  classifyTowerAiFetchError,
+  fetchTowerAi,
   getTowerAiStreamUrl,
+  logTowerAiProxyError,
   rejectNonFrontendAiRequest,
+  TOWER_AI_ROUTE_MAX_DURATION_SECONDS,
 } from "@/lib/server/towerAiBackend";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = TOWER_AI_ROUTE_MAX_DURATION_SECONDS;
 
 const EVM_ADDRESS_IN_TEXT_PATTERN = /0x[a-fA-F0-9]{40}/g;
 
-const readWalletProofFields = (payload: Record<string, unknown>) => {
-  const signature =
-    typeof payload.wallet_signature === "string"
-      ? payload.wallet_signature.trim()
-      : "";
-  const timestamp =
-    typeof payload.wallet_signature_timestamp === "string"
-      ? payload.wallet_signature_timestamp.trim()
-      : "";
-
-  if (!signature.startsWith("0x") || !timestamp) {
-    return {};
-  }
-
-  return {
-    wallet_signature: signature,
-    wallet_signature_timestamp: timestamp,
-  };
-};
-
 export async function POST(request: NextRequest) {
+  let streamUrl: string | null = null;
+
   try {
     const frontendGate = rejectNonFrontendAiRequest(request);
     if (frontendGate) {
@@ -53,36 +43,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const streamUrl = getTowerAiStreamUrl();
+    streamUrl = getTowerAiStreamUrl();
     if (!streamUrl) {
       return aiBackendUnconfiguredResponse();
     }
 
-    const rawBody = (await request.json()) as Record<string, unknown>;
+    const rawBody = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!rawBody || typeof rawBody !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
     const rawMessage =
-      typeof rawBody.message === "string" ? rawBody.message : undefined;
-    const sanitizedMessage = rawMessage
-      ? rawMessage.replace(EVM_ADDRESS_IN_TEXT_PATTERN, (match) => {
-          const normalized = normalizeWalletAddress(match);
-          return normalized && normalized === wallet ? match : wallet;
-        })
-      : rawMessage;
+      typeof rawBody.message === "string" ? rawBody.message : "";
+    const sanitizedMessage = rawMessage.replace(
+      EVM_ADDRESS_IN_TEXT_PATTERN,
+      (match) => {
+        const normalized = normalizeWalletAddress(match);
+        return normalized && normalized === wallet ? match : wallet;
+      },
+    );
 
-    const body = {
-      ...rawBody,
-      message: sanitizedMessage,
-      wallet_address: wallet,
-      walletAddress: wallet,
-      userid: wallet,
-      userId: wallet,
-      ...readWalletProofFields(rawBody),
-    };
+    const body = buildTowerAiChatRequestBody(rawBody, wallet, sanitizedMessage);
 
-    const response = await fetch(streamUrl, {
-      method: "POST",
-      headers: getTowerAiAuthHeaders(),
-      body: JSON.stringify(body),
-    });
+    const response = await fetchTowerAi(streamUrl, body);
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({
@@ -123,10 +109,11 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error("Streaming API Route Error:", error);
+    logTowerAiProxyError("Streaming API Route Error:", error, streamUrl);
+    const failure = classifyTowerAiFetchError(error);
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 },
+      { error: failure.error, message: failure.message },
+      { status: failure.status },
     );
   }
 }

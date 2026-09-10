@@ -74,7 +74,19 @@ const COMPACT_ERROR_LABELS: Array<{
   },
   {
     label: "Unable to send message.",
-    matches: ["failed to send message"],
+    matches: [
+      "failed to send message",
+      "unable to reach the ai service",
+      "unable to reach ai service",
+    ],
+  },
+  {
+    label: "AI is taking too long.",
+    matches: [
+      "taking too long to respond",
+      "ai request timed out",
+      "ai is taking too long",
+    ],
   },
   {
     label: "Unable to create session.",

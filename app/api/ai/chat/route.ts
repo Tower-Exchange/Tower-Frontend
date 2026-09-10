@@ -4,10 +4,18 @@ import { requireWalletSession } from "@/lib/server/walletSession";
 import { normalizeWalletAddress } from "@/lib/server/wallet";
 import {
   aiBackendUnconfiguredResponse,
-  getTowerAiAuthHeaders,
+  buildTowerAiChatRequestBody,
+  classifyTowerAiFetchError,
+  fetchTowerAi,
   getTowerAiChatUrl,
+  logTowerAiProxyError,
   rejectNonFrontendAiRequest,
+  TOWER_AI_ROUTE_MAX_DURATION_SECONDS,
 } from "@/lib/server/towerAiBackend";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = TOWER_AI_ROUTE_MAX_DURATION_SECONDS;
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const EVM_ADDRESS_IN_TEXT_PATTERN = /0x[a-fA-F0-9]{40}/g;
@@ -207,6 +215,16 @@ const getErrorMessage = (
 
     if (typeof value === "string" && value.trim()) {
       return value.trim();
+    }
+  }
+
+  if (Array.isArray(payload.detail) && payload.detail.length > 0) {
+    const first = payload.detail[0];
+    if (first && typeof first === "object") {
+      const record = first as Record<string, unknown>;
+      if (typeof record.msg === "string" && record.msg.trim()) {
+        return record.msg.trim();
+      }
     }
   }
 
@@ -951,26 +969,6 @@ const getWalletAddress = (payload: AiChatPayload) => {
   return null;
 };
 
-const readWalletProofFields = (payload: AiChatPayload) => {
-  const signature =
-    typeof payload.wallet_signature === "string"
-      ? payload.wallet_signature.trim()
-      : "";
-  const timestamp =
-    typeof payload.wallet_signature_timestamp === "string"
-      ? payload.wallet_signature_timestamp.trim()
-      : "";
-
-  if (!signature.startsWith("0x") || !timestamp) {
-    return {};
-  }
-
-  return {
-    wallet_signature: signature,
-    wallet_signature_timestamp: timestamp,
-  };
-};
-
 const getSolanaWalletAddress = (payload: AiChatPayload) => {
   for (const field of ["solana_wallet_address", "solanaWalletAddress"]) {
     const value = payload[field];
@@ -1347,6 +1345,8 @@ const enrichBridgeExecution = (
   };
 };
 export async function POST(request: NextRequest) {
+  let chatUrl: string | null = null;
+
   try {
     const frontendGate = rejectNonFrontendAiRequest(request);
     if (frontendGate) {
@@ -1364,12 +1364,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const chatUrl = getTowerAiChatUrl();
+    chatUrl = getTowerAiChatUrl();
     if (!chatUrl) {
       return aiBackendUnconfiguredResponse();
     }
 
-    const rawBody = (await request.json()) as AiChatPayload;
+    const rawBody = (await request.json().catch(() => null)) as AiChatPayload | null;
+    if (!rawBody || typeof rawBody !== "object") {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
 
     // Bind identity to the authenticated session wallet (finding 03).
     // Never trust client-supplied userid / wallet_address / free-text victim addresses.
@@ -1379,24 +1382,40 @@ export async function POST(request: NextRequest) {
             const normalized = normalizeWalletAddress(match);
             return normalized && normalized === wallet ? match : wallet;
           })
-        : rawBody.message;
+        : "";
 
+    if (!sanitizedMessage.trim()) {
+      return NextResponse.json({ error: "Message is required" }, { status: 400 });
+    }
+
+    const upstreamBody = buildTowerAiChatRequestBody(
+      rawBody,
+      wallet,
+      sanitizedMessage,
+    );
+
+    if (
+      typeof upstreamBody.session_id !== "string" ||
+      !upstreamBody.session_id
+    ) {
+      return NextResponse.json(
+        { error: "session_id is required" },
+        { status: 400 },
+      );
+    }
+
+    const solanaWallet = getSolanaWalletAddress(rawBody);
     const body: AiChatPayload = {
-      ...rawBody,
-      message: sanitizedMessage,
-      wallet_address: wallet,
-      walletAddress: wallet,
-      userid: wallet,
-      userId: wallet,
-      ...readWalletProofFields(rawBody),
+      ...upstreamBody,
+      ...(solanaWallet
+        ? {
+            solana_wallet_address: solanaWallet,
+            solanaWalletAddress: solanaWallet,
+          }
+        : {}),
     };
 
-    const response = await fetch(chatUrl, {
-      method: "POST",
-      headers: getTowerAiAuthHeaders(),
-      body: JSON.stringify(body),
-      cache: "no-store",
-    });
+    const response = await fetchTowerAi(chatUrl, upstreamBody);
 
     const data = await readResponsePayload(response);
 
@@ -1406,18 +1425,27 @@ export async function POST(request: NextRequest) {
         `Tower AI backend request failed with status ${response.status}`,
       );
 
-      console.error(
-        "Tower AI Agent Error Response:",
-        JSON.stringify(
-          {
-            status: response.status,
-            statusText: response.statusText,
-            body: data,
-          },
-          null,
-          2,
-        ),
-      );
+      try {
+        console.error(
+          "Tower AI Agent Error Response:",
+          JSON.stringify(
+            {
+              status: response.status,
+              statusText: response.statusText,
+              body: data,
+            },
+            null,
+            2,
+          ),
+        );
+      } catch (logError) {
+        console.error(
+          "Tower AI Agent Error Response:",
+          response.status,
+          response.statusText,
+          logError,
+        );
+      }
 
       return NextResponse.json(
         {
@@ -1443,12 +1471,18 @@ export async function POST(request: NextRequest) {
       console.error("[ai/chat] Response enrichment failed:", enrichmentError);
     }
 
-    return NextResponse.json(enrichedData);
+    try {
+      return NextResponse.json(enrichedData);
+    } catch (serializeError) {
+      console.error("[ai/chat] Failed to serialize enriched response:", serializeError);
+      return NextResponse.json(data);
+    }
   } catch (error) {
-    console.error("Error sending message to AI agent:", error);
+    logTowerAiProxyError("Error sending message to AI agent:", error, chatUrl);
+    const failure = classifyTowerAiFetchError(error);
     return NextResponse.json(
-      { error: "Failed to send message" },
-      { status: 500 }
+      { error: failure.error, message: failure.message },
+      { status: failure.status },
     );
   }
 }
