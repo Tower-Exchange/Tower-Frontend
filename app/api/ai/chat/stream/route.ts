@@ -14,12 +14,11 @@ import {
   getTowerAiStreamUrl,
   logTowerAiProxyError,
   rejectNonFrontendAiRequest,
-  TOWER_AI_ROUTE_MAX_DURATION_SECONDS,
 } from "@/lib/server/towerAiBackend";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = TOWER_AI_ROUTE_MAX_DURATION_SECONDS;
+export const maxDuration = 120;
 
 const EVM_ADDRESS_IN_TEXT_PATTERN = /0x[a-fA-F0-9]{40}/g;
 

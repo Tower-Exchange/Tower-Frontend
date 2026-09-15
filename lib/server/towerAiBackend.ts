@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-
-const FORBIDDEN = NextResponse.json(
-  { error: "Forbidden" },
-  { status: 403 },
-);
+import { rejectNonFrontendRequest } from "@/lib/server/frontendRequestGuard";
 
 const stripTrailingSlash = (value: string) => value.replace(/\/+$/, "");
 
@@ -57,7 +53,7 @@ export function getTowerAiAuthHeaders(): Record<string, string> {
   return headers;
 }
 
-/** Vercel/Hobby clamps this; Pro/Fluid allows 120s+ for LLM round-trips. */
+/** Platform timeout budget in seconds. Route `maxDuration` must copy this as a numeric literal. */
 export const TOWER_AI_ROUTE_MAX_DURATION_SECONDS = 120;
 /** Abort before the platform kills the function so the client gets a 504. */
 export const TOWER_AI_FETCH_TIMEOUT_MS = 110_000;
@@ -247,86 +243,12 @@ export function buildTowerAiChatRequestBody(
   return body;
 }
 
-const DEFAULT_FRONTEND_HOSTS = new Set([
-  "tower.exchange",
-  "www.tower.exchange",
-  "app.tower.exchange",
-]);
-
-const stripWww = (host: string) => host.replace(/^www\./, "");
-
-const hostFromUrl = (value: string) => {
-  try {
-    return new URL(value).host.toLowerCase();
-  } catch {
-    return null;
-  }
-};
-
-const getRequestHost = (request: NextRequest) => {
-  const forwarded = request.headers.get("x-forwarded-host");
-  const hostHeader = forwarded || request.headers.get("host") || request.nextUrl.host;
-  return hostHeader.split(",")[0]?.trim().toLowerCase() || "";
-};
-
-const isKnownFrontendHost = (host: string) => {
-  if (!host) {
-    return false;
-  }
-
-  if (DEFAULT_FRONTEND_HOSTS.has(host) || DEFAULT_FRONTEND_HOSTS.has(stripWww(host))) {
-    return true;
-  }
-
-  const extra = process.env.TOWER_AI_ALLOWED_ORIGINS || "";
-  for (const origin of extra.split(",")) {
-    const extraHost = hostFromUrl(origin.trim()) || origin.trim().toLowerCase();
-    if (extraHost && (extraHost === host || stripWww(extraHost) === stripWww(host))) {
-      return true;
-    }
-  }
-
-  return false;
-};
-
-const hostsMatch = (left: string, right: string) =>
-  Boolean(left && right && stripWww(left) === stripWww(right));
-
 /**
  * Reject terminal/curl callers that are not a browser request from the
  * Tower frontend. Wallet session is still required on each AI route.
- *
- * On Vercel, `request.nextUrl.origin` is often the *.vercel.app host while
- * the browser Origin is tower.exchange — never require those to be equal.
  */
 export function rejectNonFrontendAiRequest(request: NextRequest) {
-  const secFetchSite = (request.headers.get("sec-fetch-site") || "").toLowerCase();
-
-  if (secFetchSite === "same-origin") {
-    return null;
-  }
-
-  const requestHost = getRequestHost(request);
-  const originHost = request.headers.get("origin")
-    ? hostFromUrl(request.headers.get("origin") || "")
-    : null;
-  const refererHost = request.headers.get("referer")
-    ? hostFromUrl(request.headers.get("referer") || "")
-    : null;
-
-  if (originHost && (hostsMatch(originHost, requestHost) || isKnownFrontendHost(originHost))) {
-    return null;
-  }
-
-  if (
-    !originHost &&
-    refererHost &&
-    (hostsMatch(refererHost, requestHost) || isKnownFrontendHost(refererHost))
-  ) {
-    return null;
-  }
-
-  return FORBIDDEN;
+  return rejectNonFrontendRequest(request);
 }
 
 export function aiBackendUnconfiguredResponse() {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { isSolanaBridgeChain } from "@/lib/bridgeNetworks";
 import { requireWalletSession } from "@/lib/server/walletSession";
 import { normalizeWalletAddress } from "@/lib/server/wallet";
 import {
@@ -10,12 +11,13 @@ import {
   getTowerAiChatUrl,
   logTowerAiProxyError,
   rejectNonFrontendAiRequest,
-  TOWER_AI_ROUTE_MAX_DURATION_SECONDS,
 } from "@/lib/server/towerAiBackend";
+import { handleSwapQuotePost } from "@/app/api/swap/quote/route";
+import { handleSwapBuildTxPost } from "@/app/api/swap/build-tx/route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = TOWER_AI_ROUTE_MAX_DURATION_SECONDS;
+export const maxDuration = 120;
 
 const EVM_ADDRESS_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const EVM_ADDRESS_IN_TEXT_PATTERN = /0x[a-fA-F0-9]{40}/g;
@@ -129,6 +131,17 @@ const SUPPORTED_BRIDGE_CHAINS = [
   "sonic-testnet",
   "unichain-sepolia",
   "solana",
+  "arc",
+  "base",
+  "optimism",
+  "avalanche",
+  "arbitrum",
+  "ethereum",
+  "linea",
+  "polygon",
+  "sonic",
+  "unichain",
+  "solana-mainnet",
 ] as const;
 
 type SupportedBridgeChain = (typeof SUPPORTED_BRIDGE_CHAINS)[number];
@@ -145,6 +158,17 @@ const BRIDGE_CHAIN_NAMES: Record<SupportedBridgeChain, string> = {
   "sonic-testnet": "Sonic Testnet",
   "unichain-sepolia": "Unichain Sepolia",
   solana: "Solana Devnet",
+  arc: "Arc",
+  base: "Base",
+  optimism: "Optimism",
+  avalanche: "Avalanche",
+  arbitrum: "Arbitrum",
+  ethereum: "Ethereum",
+  linea: "Linea",
+  polygon: "Polygon",
+  sonic: "Sonic",
+  unichain: "Unichain",
+  "solana-mainnet": "Solana",
 };
 
 const BRIDGE_CHAIN_ALIASES: Record<SupportedBridgeChain, string[]> = {
@@ -177,6 +201,17 @@ const BRIDGE_CHAIN_ALIASES: Record<SupportedBridgeChain, string[]> = {
     "unichain",
   ],
   solana: ["solana", "solana devnet", "devnet"],
+  arc: ["arc mainnet"],
+  base: ["base mainnet"],
+  optimism: ["optimism mainnet", "op mainnet"],
+  avalanche: ["avalanche mainnet"],
+  arbitrum: ["arbitrum mainnet"],
+  ethereum: ["ethereum mainnet", "eth mainnet"],
+  linea: ["linea mainnet"],
+  polygon: ["polygon mainnet"],
+  sonic: ["sonic mainnet"],
+  unichain: ["unichain mainnet"],
+  "solana-mainnet": ["solana mainnet", "solana-mainnet"],
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -931,18 +966,19 @@ const fetchLocalQuote = async (
 ): Promise<AiQuote | null> => {
   try {
     const quoteUrl = new URL("/api/swap/quote", request.url);
-    const quoteResponse = await fetch(quoteUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        inputToken: intent.inputToken,
-        outputToken: intent.outputToken,
-        inputAmount: intent.inputAmount,
-        slippageTolerance: 50,
-        dexId: intent.dexId,
+    const quoteResponse = await handleSwapQuotePost(
+      new NextRequest(quoteUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          inputToken: intent.inputToken,
+          outputToken: intent.outputToken,
+          inputAmount: intent.inputAmount,
+          slippageTolerance: 50,
+          dexId: intent.dexId,
+        }),
       }),
-      cache: "no-store",
-    });
+    );
 
     if (!quoteResponse.ok) {
       console.warn("[ai/chat] Local quote fetch failed:", quoteResponse.status);
@@ -985,7 +1021,7 @@ const isBridgeAddressValid = (
   address: string,
   chain: SupportedBridgeChain | null,
 ) => {
-  if (chain === "solana") {
+  if (isSolanaBridgeChain(chain)) {
     return SOLANA_ADDRESS_PATTERN.test(address);
   }
 
@@ -996,7 +1032,7 @@ const getDefaultWalletAddressForChain = (
   payload: AiChatPayload,
   chain: SupportedBridgeChain | null,
 ) => {
-  return chain === "solana"
+  return isSolanaBridgeChain(chain)
     ? getSolanaWalletAddress(payload)
     : getWalletAddress(payload);
 };
@@ -1005,7 +1041,7 @@ const getMessageAddressesForChain = (
   message: string,
   chain: SupportedBridgeChain | null,
 ) => {
-  if (chain === "solana") {
+  if (isSolanaBridgeChain(chain)) {
     return Array.from(message.matchAll(SOLANA_ADDRESS_IN_TEXT_PATTERN), (match) => match[0]);
   }
 
@@ -1034,15 +1070,16 @@ const fetchLocalSwapTransaction = async (
 ): Promise<LocalSwapTransactionBundle | null> => {
   try {
     const buildTxUrl = new URL("/api/swap/build-tx", request.url);
-    const buildTxResponse = await fetch(buildTxUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quote,
-        userAddress,
+    const buildTxResponse = await handleSwapBuildTxPost(
+      new NextRequest(buildTxUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          quote,
+          userAddress,
+        }),
       }),
-      cache: "no-store",
-    });
+    );
 
     const buildTxData = await buildTxResponse.json();
 
@@ -1187,6 +1224,8 @@ const estimateBridgeTime = (toChain: string) => {
     "avalanche-fuji": "2-5 minutes",
     "arbitrum-sepolia": "2-5 minutes",
     solana: "2-5 minutes",
+    "solana-mainnet": "2-5 minutes",
+    arc: "1-2 minutes",
   };
 
   return timeMap[toChain] || "2-5 minutes";
@@ -1200,7 +1239,7 @@ const buildBridgeReadyReply = (bridgeRequest: BridgeExecutionRequest) => {
     BRIDGE_CHAIN_NAMES[bridgeRequest.toChain as SupportedBridgeChain] ||
     bridgeRequest.toChain;
 
-  if (bridgeRequest.fromChain === "solana" && !bridgeRequest.sourceAddress) {
+  if (isSolanaBridgeChain(bridgeRequest.fromChain) && !bridgeRequest.sourceAddress) {
     return [
       `I can prepare the bridge of ${bridgeRequest.amount} ${bridgeRequest.token} from ${fromName} to ${toName}.`,
       "Connect your Solana wallet to continue with the source-side signing flow.",
@@ -1208,7 +1247,7 @@ const buildBridgeReadyReply = (bridgeRequest: BridgeExecutionRequest) => {
     ].join("\n");
   }
 
-  if (bridgeRequest.toChain === "solana" && !bridgeRequest.toAddress) {
+  if (isSolanaBridgeChain(bridgeRequest.toChain) && !bridgeRequest.toAddress) {
     return [
       `I can prepare the bridge of ${bridgeRequest.amount} ${bridgeRequest.token} from ${fromName} to ${toName}.`,
       "Include a Solana receiving address in your message to continue.",
@@ -1237,9 +1276,9 @@ const buildBridgeExecutionPayload = (bridgeRequest: BridgeExecutionRequest) => (
   estimatedFee: "0.000130",
   estimatedTime: estimateBridgeTime(bridgeRequest.toChain),
   message:
-    bridgeRequest.toChain === "solana" && !bridgeRequest.toAddress
+    isSolanaBridgeChain(bridgeRequest.toChain) && !bridgeRequest.toAddress
       ? "Bridge request prepared. A Solana receiving address is still needed before signing."
-      : bridgeRequest.fromChain === "solana" && !bridgeRequest.sourceAddress
+      : isSolanaBridgeChain(bridgeRequest.fromChain) && !bridgeRequest.sourceAddress
         ? "Bridge request prepared. Connect your Solana wallet to continue signing the source transaction."
         : "Bridge request prepared for wallet signing.",
 });
@@ -1251,10 +1290,12 @@ const messageMentionsArcSolanaBridge = (message: string) => {
 
   const mentions = findBridgeChainMentions(message);
   const hasArc =
-    mentions.some((mention) => mention.chain === "arc-testnet") ||
-    /\barc(?:\s+testnet)?\b/i.test(message);
+    mentions.some(
+      (mention) => mention.chain === "arc-testnet" || mention.chain === "arc",
+    ) ||
+    /\barc(?:\s+testnet|\s+mainnet)?\b/i.test(message);
   const hasSolana =
-    mentions.some((mention) => mention.chain === "solana") ||
+    mentions.some((mention) => isSolanaBridgeChain(mention.chain)) ||
     /\bsolana\b|\bdevnet\b/i.test(message);
 
   return hasArc && hasSolana;
