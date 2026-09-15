@@ -237,7 +237,7 @@ export default function BridgeSelectContent() {
                           isUnavailable
                             ? "cursor-not-allowed text-muted-foreground/60 opacity-60"
                             : selectedChainId === chain.id
-                              ? "bg-primary/20 text-primary font-semibold border-l-2 border-primary"
+                              ? "bg-primary/20 text-primary font-semibold"
                               : "text-foreground/80 hover:bg-[#181d26] hover:text-foreground"
                         }`}
                       >
@@ -262,7 +262,7 @@ export default function BridgeSelectContent() {
                           <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
                         )}
                         {isUnavailable && (
-                          <span className="ml-auto rounded-md bg-[#252c38] px-2.5 py-1 text-xs font-semibold capitalize text-zinc-200 border border-border/50 shrink-0">
+                          <span className="ml-auto text-sm capitalize shrink-0">
                             {oppositeSelectionLabel}
                           </span>
                         )}
@@ -408,7 +408,13 @@ export default function BridgeSelectContent() {
                         </span>
                       </div>
                     </div>
-                    <span className="text-xs font-semibold text-zinc-300">
+                    <span
+                      className={`text-xs ${
+                        isUnavailable
+                          ? "text-muted-foreground"
+                          : "font-semibold text-zinc-300"
+                      }`}
+                    >
                       {isUnavailable
                         ? side === "to"
                           ? "Selected as source"
@@ -495,7 +501,7 @@ export default function BridgeSelectContent() {
                         isUnavailable
                           ? "cursor-not-allowed text-muted-foreground/60 opacity-60"
                           : isSelected
-                            ? "bg-primary/20 text-primary font-semibold border-l-2 border-primary"
+                            ? "bg-primary/20 text-primary font-semibold"
                             : "text-foreground/80 hover:bg-[#1a202b] hover:text-foreground"
                       }`}
                     >
@@ -520,7 +526,7 @@ export default function BridgeSelectContent() {
                         <Check className="ml-auto h-4 w-4 text-primary shrink-0" />
                       )}
                       {isUnavailable && (
-                        <span className="ml-auto rounded-md bg-[#252c38] px-2.5 py-1 text-xs font-semibold capitalize text-zinc-200 border border-border/50 shrink-0">
+                        <span className="ml-auto text-sm capitalize shrink-0">
                           {oppositeSelectionLabel}
                         </span>
                       )}

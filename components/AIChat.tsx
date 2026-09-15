@@ -1511,10 +1511,10 @@ export const AIChat = () => {
         <div className="flex items-center px-4 pt-4 sm:px-6 sm:pt-5 lg:px-7">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-muted-foreground transition-colors hover:border-border hover:bg-accent hover:text-foreground sm:h-10 sm:w-10"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-[#7BB8FF] transition-colors hover:border-border hover:bg-accent sm:h-10 sm:w-10"
             aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
-            {sidebarOpen ? <X size={18} /> : <Menu size={18} />}
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} className="text-[#7BB8FF]" />}
           </button>
         </div>
 

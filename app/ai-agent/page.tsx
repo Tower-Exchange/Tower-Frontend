@@ -12,6 +12,9 @@ import TokenTicker from "@/components/TokenTicker";
 const AIAgentPage = () => {
   const [activeTab, setActiveTab] = useState("portfolio");
   const [showRightPanel, setShowRightPanel] = useState(false);
+
+  // Shows the big plus button in the bottom right for mobile users
+  const [showRightPanelButton, setShowRightPanelButton] = useState(false);
   const [isLargeScreen, setIsLargeScreen] = useState(false);
 
   useEffect(() => {
@@ -38,7 +41,7 @@ const AIAgentPage = () => {
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <TokenTicker />
 
-        {!showRightPanel && (
+        {!showRightPanel && showRightPanelButton && (
           <div className="fixed bottom-[10rem] right-4 z-50 lg:hidden sm:bottom-[17rem] sm:right-6">
             <motion.button
               whileHover={{ scale: 1.08 }}
@@ -111,24 +114,10 @@ const AIAgentPage = () => {
                     </div>
                   )}
 
-                  <div className="shrink-0 rounded-[10px] border border-border bg-muted p-1.5 lg:p-1">
-                    <div className="grid w-full grid-cols-1 gap-1.5 lg:gap-1">
-                      {tabs.map((tab) => (
-                        <motion.button
-                          key={tab.id}
-                          whileHover={{ scale: 1.01 }}
-                          whileTap={{ scale: 0.99 }}
-                          onClick={() => setActiveTab(tab.id)}
-                          className={`flex items-center justify-center min-w-0 whitespace-nowrap rounded-[4px] px-1.5 py-2.5 text-center text-[0.72rem] font-semibold tracking-[-0.01em] transition-all lg:px-2 lg:py-2 lg:text-[0.76rem] xl:px-3 xl:py-2.25 xl:text-[0.82rem] ${
-                            activeTab === tab.id
-                              ? "bg-accent text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
-                              : "text-muted-foreground hover:text-foreground"
-                          }`}
-                        >
-                          {tab.label}
-                        </motion.button>
-                      ))}
-                    </div>
+                  <div className="shrink-0 px-2 pt-1 lg:px-1">
+                    <h2 className="text-base font-bold text-foreground sm:text-lg lg:text-xl text-center">
+                      Portfolio Analysis
+                    </h2>
                   </div>
 
                   <div
