@@ -97,6 +97,7 @@ export interface ActivityRow {
   source_network_name: string;
   destination_currency_ticker: string | null;
   destination_network_name: string | null;
+  destination_address?: string | null;
   status: "Successful" | "Failed" | "Pending";
   timestamp: string;
   amount: number | null;
@@ -118,6 +119,7 @@ export interface BridgeActivityParams {
   transactionHash?: string;
   fee?: string;
   status?: "Successful" | "Failed" | "Pending";
+  destinationAddress?: string;
 }
 
 // Interface for bridge fee recording
@@ -285,6 +287,7 @@ export async function registerBridgeActivity(
       source_network_name: params.fromChain,
       destination_currency_ticker: params.token,
       destination_network_name: params.toChain,
+      destination_address: params.destinationAddress || null,
       amount: parseFloat(params.amount),
       amount_usd: parseFloat(params.amount), // USDC is 1:1 with USD
       transaction_hash: params.transactionHash || null,

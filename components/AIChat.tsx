@@ -1084,6 +1084,7 @@ export const AIChat = () => {
                   transactionHash: result.transactionHash,
                   fee: bridgeFeeQuote.totalFee,
                   status: result.status === "pending" ? "Pending" : "Successful",
+                  destinationAddress: toAddress || undefined,
                 });
 
                 await registerBridgeFee({
