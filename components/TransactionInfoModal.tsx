@@ -119,7 +119,7 @@ const HeaderLogo = ({
       )}
 
       {badgeIcon ? (
-        <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-[#191A1C] bg-card">
+        <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-[#14181f] bg-card">
           <Image
             src={badgeIcon}
             alt=""
@@ -164,7 +164,7 @@ const InfoRow = ({
 }) => (
   <div className="flex items-center justify-between gap-4">
     <div className="flex min-w-0 items-center gap-2 text-[0.95rem] font-medium text-foreground">
-      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-foreground">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-foreground border-white border">
         {icon}
       </span>
       <span className="truncate">{label}</span>
@@ -208,7 +208,7 @@ const AddAssetButton = ({
     <span className="relative inline-flex h-5 w-5 items-center justify-center">
       <SmallAsset icon={primaryIcon} />
       {badgeIcon ? (
-        <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-full border border-[#252628] bg-card">
+        <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center overflow-hidden rounded-full border border-[#1b1f28] bg-card">
           <Image
             src={badgeIcon}
             alt=""

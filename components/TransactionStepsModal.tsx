@@ -75,7 +75,7 @@ const StepLogo = ({
       )}
 
       {badgeIcon ? (
-        <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-[#191A1C] bg-card">
+        <span className="absolute -bottom-1 -right-1 inline-flex h-5 w-5 items-center justify-center overflow-hidden rounded-full border border-[#14181f] bg-card">
           <Image
             src={badgeIcon}
             alt=""

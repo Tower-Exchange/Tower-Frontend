@@ -162,7 +162,10 @@ export const TransactionConfirmation: React.FC<
           )}
 
           {transactionHash && (
-            <div className="mb-3 min-w-0 overflow-hidden rounded bg-black/30 p-2 font-mono text-xs">
+            <div
+              className="mb-3 min-w-0 overflow-hidden rounded bg-black/30 p-2 font-sora text-xs [font-family:var(--font-sora)]"
+              style={{ fontFamily: "var(--font-sora)" }}
+            >
               <div className="flex flex-wrap min-w-0 items-center justify-between gap-x-2 gap-y-1">
                 <span className="shrink-0 text-muted-foreground">TX Hash:</span>
                 <div className="flex min-w-0 flex-1 items-center justify-end gap-2">

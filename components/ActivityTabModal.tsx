@@ -260,11 +260,11 @@ const ActivityCard = ({
           {item.kind === "bridge" ? (
             <span className="flex shrink-0 items-center -space-x-1.5">
               {item.sourceChainIcon ? (
-                <span className="inline-flex rounded-full bg-card ring-2 ring-[#191a1c]">
+                <span className="inline-flex rounded-full bg-card ring-2 ring-[#14181f]">
                   <IconBubble icon={item.sourceChainIcon} size="sm" />
                 </span>
               ) : null}
-              <span className="inline-flex rounded-full bg-card ring-2 ring-[#191a1c]">
+              <span className="inline-flex rounded-full bg-card ring-2 ring-[#14181f]">
                 <IconBubble
                   icon={item.targetChainIcon || item.sourceChainIcon}
                   size="sm"

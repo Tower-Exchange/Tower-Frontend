@@ -93,7 +93,7 @@ export default function DevelopersPage() {
           </h1>
 
           {/* Subtitle */}
-          <p className="mt-4 sm:mt-5 text-base sm:text-[18px] text-muted-foreground leading-relaxed font-normal max-w-[700px] mx-auto">
+          <p className="mt-4 sm:mt-5 text-base sm:text-[18px] text-white leading-relaxed font-normal max-w-[700px] mx-auto">
             One integration unlocks the entire Arc stablecoin ecosystem. Access
             the best prices across every liquidity source, eliminate
             fragmentation, and build faster with Tower's unified routing
@@ -250,7 +250,7 @@ export default function DevelopersPage() {
                 initial={{ opacity: 0, y: 25 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-                className="bg-gradient-to-b from-[#191A1C] via-[#17181B] to-[#141517] border border-[#26282D] rounded-[25px] p-6 sm:p-8 shadow-xl"
+                className="bg-[#191a1c] border border-[#272c35] rounded-[25px] p-6 sm:p-8 shadow-xl"
               >
                 {/* Header section with #7BB8FF icon */}
                 <div className="flex items-center gap-3">
@@ -276,8 +276,8 @@ export default function DevelopersPage() {
                 <ul className="space-y-3.5 text-sm sm:text-base text-muted-foreground font-normal leading-relaxed">
                   {feature.bullets.map((bullet, bIndex) => (
                     <li key={bIndex} className="flex items-start gap-2.5">
-                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground" />
-                      <span>{bullet}</span>
+                      <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-[#7BB8FF]" />
+                      <span className="text-white font-light">{bullet}</span>
                     </li>
                   ))}
                 </ul>

@@ -105,7 +105,7 @@ export const CountdownBadgeModal = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/65 px-4 backdrop-blur-md"
+          className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 px-4 backdrop-blur-md"
           onClick={onClose}
         >
           <motion.div
@@ -116,19 +116,19 @@ export const CountdownBadgeModal = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.97 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="relative flex h-[501px] w-[579px] max-w-[calc(100vw-2rem)] flex-col items-center overflow-hidden rounded-[30px] bg-[#191A1C] px-10 pb-10 pt-12 shadow-[0_30px_90px_rgba(0,0,0,0.68)]"
+            className="relative flex w-full max-w-[580px] flex-col items-center rounded-[28px] border border-border bg-card px-8 pb-10 pt-12 shadow-2xl sm:px-10"
             onClick={(event) => event.stopPropagation()}
           >
             <button
               type="button"
               onClick={onClose}
               aria-label="Close countdown"
-              className="absolute right-5 top-5 inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-white/8"
+              className="absolute right-8 top-8 inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
             >
-              <X size={18} strokeWidth={2} />
+              <X size={21} strokeWidth={2} />
             </button>
 
-            <div className="flex h-full w-full flex-col items-center justify-center text-center">
+            <div className="flex w-full flex-col items-center text-center">
               <Image
                 src={mysteryBadgeImage}
                 alt="Mystery badge"
@@ -140,16 +140,13 @@ export const CountdownBadgeModal = ({
 
               <p
                 id="countdown-badge-title"
-                className="mt-6 max-w-[22rem] text-base font-medium leading-snug text-foreground"
+                className="mt-6 max-w-[22rem] text-center text-base font-medium leading-snug text-foreground sm:text-lg"
               >
                 To kick off Arctember, we&apos;ve got two special badges coming
                 your way.
               </p>
 
-              <div
-                className="mt-8 flex items-end justify-center bg-[#121214] px-8 py-4"
-                style={{ borderRadius: "12.39px" }}
-              >
+              <div className="mt-8 flex w-full items-center justify-center rounded-[28px] border border-border bg-white/[0.03] px-6 py-5 sm:px-8">
                 {COUNTDOWN_UNITS.map((unit, index) => (
                   <div key={unit.key} className="flex items-end">
                     {index > 0 ? (
@@ -161,7 +158,7 @@ export const CountdownBadgeModal = ({
                       <span className="text-[1.55rem] font-semibold leading-none tabular-nums tracking-tight text-foreground">
                         {padCountdownValue(countdown[unit.key])}
                       </span>
-                      <span className="mt-1.5 text-[0.68rem] leading-none text-[#9AA0A8]">
+                      <span className="mt-1.5 text-[0.68rem] leading-none text-muted-foreground">
                         {unit.label}
                       </span>
                     </div>
@@ -169,7 +166,7 @@ export const CountdownBadgeModal = ({
                 ))}
               </div>
 
-              <p className="mt-6 text-sm font-medium text-foreground">
+              <p className="mt-6 text-center text-base font-medium text-foreground">
                 Mainnet Countdown
               </p>
             </div>

@@ -299,7 +299,7 @@ export default function RouterDisplay({
         <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
           <div className="flex min-w-0 flex-nowrap items-center gap-1.5">
             <span
-              className="inline-flex h-[18px] min-w-6 shrink-0 items-center justify-center rounded-full border border-border bg-muted px-1 text-foreground"
+              className="inline-flex h-[18px] min-w-6 shrink-0 items-center justify-center rounded-full border border-white/20 bg-muted px-1 text-foreground"
               aria-label={`${dexCount} DEX routes available`}
             >
               <span className="flex items-center justify-center gap-0.5 text-[9px] font-bold leading-none">
@@ -385,7 +385,6 @@ export default function RouterDisplay({
                   ? `
     border border-primary/40
     bg-accent
-    ring-1 ring-border/50
     shadow-[inset_0_1px_0_rgba(255,255,255,.06),inset_0_-1px_0_rgba(0,0,0,.45),0_2px_6px_rgba(0,0,0,.35)]
   `
                   : "border border-transparent"
