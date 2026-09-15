@@ -51,7 +51,7 @@ Query: Get active orders due for execution
 For each order:
   • Get swap quote from the Tower swap backend
   • Build transaction
-  • Sign via Privy
+  • Sign via the relayer
   • Broadcast to Arc RPC
   • Update next_execution_date
   • Log execution

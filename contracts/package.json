@@ -10,7 +10,13 @@
     "deploy:unitflow-adapter": "hardhat run scripts/deploy-unitflow-adapter.cjs --network arc-testnet",
     "deploy:recurring-order-executor": "hardhat run scripts/deploy-recurring-order-executor.cjs --network arc-testnet",
     "deploy:tower-swap-executor": "hardhat run scripts/deploy-tower-swap-executor.cjs --network arc-testnet",
+    "deploy:tower-swap-executor:mainnet": "hardhat run scripts/deploy-tower-swap-executor.cjs --network arc-mainnet",
     "configure:tower-swap-executor": "hardhat run scripts/configure-tower-swap-executor.cjs --network arc-testnet",
+    "configure:tower-swap-executor:mainnet": "hardhat run scripts/configure-tower-swap-executor.cjs --network arc-mainnet",
+    "verify:tower-swap-executor": "hardhat run scripts/verify-tower-swap-executor.cjs --network arc-testnet",
+    "verify:tower-swap-executor:mainnet": "hardhat run scripts/verify-tower-swap-executor.cjs --network arc-mainnet",
+    "verify:tower-dex-adapter:mainnet": "hardhat run scripts/verify-tower-dex-adapter.cjs --network arc-mainnet",
+    "verify:arc-mainnet": "hardhat run scripts/verify-arc-mainnet.cjs --network arc-mainnet",
     "configure:recurring-order-executor": "hardhat run scripts/configure-recurring-order-executor.cjs --network arc-testnet",
     "verify:recurring-order-executor": "hardhat run scripts/verify-recurring-order-executor.cjs --network arc-testnet",
     "deploy:fee-collector": "hardhat run scripts/deploy-fee-collector.cjs --network arc-testnet",
@@ -19,7 +25,8 @@
     "authorize-backend": "hardhat run scripts/authorize-backend.cjs --network arc-testnet",
     "register-routers": "hardhat run scripts/register-routers.ts --network arc-testnet",
     "test": "hardhat test",
-    "deploy:tower-dex-adapter": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-testnet"
+    "deploy:tower-dex-adapter": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-testnet",
+    "deploy:tower-dex-adapter:mainnet": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-mainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

@@ -87,15 +87,59 @@ export const CHAINS: AppChain[] = [
     color: "#FF007A",
     logo: unichainSepoliaLogo,
   },
+  { id: "arc", name: "Arc", color: "#00AEEF", logo: arcTestnetLogo },
+  {
+    id: "solana-mainnet",
+    name: "Solana",
+    color: "#14F195",
+    logo: solanaLogo,
+  },
+  { id: "base", name: "Base", color: "#0174F0", logo: baseSepoliaLogo },
+  {
+    id: "optimism",
+    name: "Optimism",
+    color: "#FF0420",
+    logo: optimismSepoliaLogo,
+  },
+  {
+    id: "avalanche",
+    name: "Avalanche",
+    color: "#E84142",
+    logo: avalancheFujiLogo,
+  },
+  {
+    id: "arbitrum",
+    name: "Arbitrum",
+    color: "#2D374B",
+    logo: arbitrumSepoliaLogo,
+  },
+  {
+    id: "ethereum",
+    name: "Ethereum",
+    color: "#627EEA",
+    logo: ethereumSepoliaLogo,
+  },
+  { id: "linea", name: "Linea", color: "#121212", logo: lineaSepoliaLogo },
+  { id: "polygon", name: "Polygon", color: "#8247E5", logo: polygonAmoyLogo },
+  { id: "sonic", name: "Sonic", color: "#00D4AA", logo: sonicTestnetLogo },
+  {
+    id: "unichain",
+    name: "Unichain",
+    color: "#FF007A",
+    logo: unichainSepoliaLogo,
+  },
 ];
 
 const CHAIN_NAME_ALIASES: Record<string, string> = {
-  arc: "arc-testnet",
-  "arc testnet": "arc-testnet",
+  arc: "arc",
+  "arc mainnet": "arc",
   "arc-testnet": "arc-testnet",
+  "arc testnet": "arc-testnet",
   solana: "solana",
   "solana devnet": "solana",
   "solana-devnet": "solana",
+  "solana-mainnet": "solana-mainnet",
+  "solana mainnet": "solana-mainnet",
 };
 
 const normalizeChainLookupValue = (value: string) =>

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ARC_RPC_ENDPOINTS } from "@/lib/arcRpc";
+import { isFrontendBrowserRequest } from "@/lib/server/frontendRequestGuard";
+import {
+  getRpcClientIp,
+  inspectRpcProxyRequest,
+} from "@/lib/server/rpcProxyGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +45,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.text();
+    const inspection = inspectRpcProxyRequest({
+      chainId: "5042002",
+      bodyText: body,
+      clientIp: getRpcClientIp(request),
+      allowBroadcast: isFrontendBrowserRequest(request),
+    });
+    if (!inspection.ok) {
+      return inspection.response;
+    }
+
     let lastError: unknown = null;
 
     for (const rpcUrl of ARC_RPC_ENDPOINTS) {

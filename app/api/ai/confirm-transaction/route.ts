@@ -10,10 +10,12 @@ import {
 interface ConfirmationRequest {
   session_id: string;
   transaction_hash: string;
-  block_number: number;
-  status: "success" | "failed";
-  gas_used: string;
+  block_number?: number;
+  status?: "success" | "failed";
+  gas_used?: string;
 }
+
+const TRANSACTION_HASH_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,8 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = (await request.json()) as ConfirmationRequest;
-    const { session_id, transaction_hash, block_number, status, gas_used } =
-      body;
+    const { session_id, transaction_hash } = body;
 
     if (!session_id || !transaction_hash) {
       return NextResponse.json(
@@ -44,11 +45,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!TRANSACTION_HASH_PATTERN.test(transaction_hash)) {
+      return NextResponse.json(
+        { error: "Invalid transaction hash" },
+        { status: 400 },
+      );
+    }
+
     console.log("Received transaction confirmation:", {
       wallet_address: wallet,
       session_id,
       transaction_hash,
-      status,
     });
 
     const { error: dbError } = await supabaseAdmin
@@ -57,9 +64,7 @@ export async function POST(request: NextRequest) {
         wallet_address: wallet,
         session_id,
         transaction_hash,
-        block_number,
-        status,
-        gas_used,
+        status: "reported",
         created_at: new Date().toISOString(),
       });
 
@@ -67,12 +72,10 @@ export async function POST(request: NextRequest) {
       console.error("Error storing confirmation in Supabase:", dbError);
     }
 
-    const successMessage = `The swap transaction has been confirmed on the blockchain! 
+    const successMessage = `The user reported a transaction hash for this session.
 Transaction Hash: ${transaction_hash}
-Block Number: ${block_number}
-Gas Used: ${gas_used}
 
-The swap has completed successfully. Your tokens are now in your wallet.`;
+Treat this as a client report only. Do not assume the swap succeeded until it is confirmed on-chain.`;
 
     const chatUrl = getTowerAiChatUrl();
     if (chatUrl) {
@@ -80,7 +83,7 @@ The swap has completed successfully. Your tokens are now in your wallet.`;
         method: "POST",
         headers: getTowerAiAuthHeaders(),
         body: JSON.stringify({
-          message: `[System: Transaction confirmed - ${transaction_hash}] The user's swap transaction has been successfully confirmed on the blockchain.`,
+          message: `[System: User reported transaction hash ${transaction_hash}. This is not on-chain confirmation.]`,
           userid: wallet,
           session_id,
           wallet_address: wallet,
@@ -111,7 +114,6 @@ The swap has completed successfully. Your tokens are now in your wallet.`;
       success: true,
       message: "Transaction confirmation recorded",
       transaction_hash,
-      block_number,
     });
   } catch (error) {
     console.error("Error processing transaction confirmation:", error);

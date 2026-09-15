@@ -10,6 +10,18 @@ try {
   require("../contracts/node_modules/dotenv/config");
 }
 
+try {
+  const { HttpProvider } = require("hardhat/internal/core/providers/http");
+  require("../contracts/scripts/lib/patchArcscanRpc.cjs").patchArcscanRpcProvider(
+    HttpProvider,
+  );
+} catch (error) {
+  console.warn(
+    "[arc-rpc] retry patch not applied:",
+    error instanceof Error ? error.message : String(error),
+  );
+}
+
 module.exports = {
   solidity: {
     version: "0.8.24",
@@ -28,6 +40,12 @@ module.exports = {
       chainId: 5042002,
       timeout: 60000,
     },
+    "arc-mainnet": {
+      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.arc-scan.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 5042,
+      timeout: 180000,
+    },
     hardhat: {},
   },
   paths: {
@@ -39,6 +57,7 @@ module.exports = {
   etherscan: {
     apiKey: {
       "arc-testnet": process.env.ARCSCAN_API_KEY || "empty",
+      "arc-mainnet": process.env.ARCSCAN_API_KEY || "empty",
     },
     customChains: [
       {
@@ -49,6 +68,17 @@ module.exports = {
           browserURL: "https://testnet.arcscan.app",
         },
       },
+      {
+        network: "arc-mainnet",
+        chainId: 5042,
+        urls: {
+          apiURL: "https://api.arc-scan.org/api",
+          browserURL: "https://arc-scan.org",
+        },
+      },
     ],
+  },
+  sourcify: {
+    enabled: false,
   },
 };

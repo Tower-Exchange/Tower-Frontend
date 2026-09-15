@@ -7,6 +7,8 @@
     "clean": "hardhat clean",
     "test": "hardhat test",
     "deploy:arc-testnet": "hardhat run scripts/deploy.cjs --network arc-testnet",
+    "deploy:arc-mainnet": "hardhat run scripts/deploy.cjs --network arc-mainnet",
+    "verify:arc-mainnet": "hardhat run scripts/verify.cjs --network arc-mainnet",
     "write": "node scripts/write.cjs",
     "seed:cirbtc": "node scripts/seed-cirbtc-pairs.cjs",
     "add:cngn-qcad-pairs": "node scripts/add-cngn-qcad-pairs.cjs"

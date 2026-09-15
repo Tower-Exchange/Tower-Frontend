@@ -3,22 +3,74 @@ import {
   type PublicClient,
   createPublicClient,
   http,
-  getContract,
   erc20Abi,
   formatUnits,
+  getAddress,
+  isAddress,
 } from "viem";
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
 import { ARC_RPC_ENDPOINTS } from "@/lib/arcRpc";
+import {
+  BRIDGE_USDC_ADDRESSES,
+  isNativeArcUsdcChain,
+  isSolanaBridgeChain,
+} from "@/lib/bridgeNetworks";
+import { getTrustedClientIp } from "@/lib/server/clientIp";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
+import { createIpRateLimiter } from "@/lib/server/ipRateLimit";
 
-const ARC_TESTNET_CHAIN_ID = "arc-testnet";
 const ARC_NATIVE_USDC_ADDRESS = "0x3600000000000000000000000000000000000000";
 const ARC_NATIVE_USDC_DECIMALS = 18;
-const SOLANA_DEVNET_CHAIN_ID = "solana";
 const SOLANA_DEVNET_RPC_URL = "https://api.devnet.solana.com";
-const SOLANA_DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+const SOLANA_MAINNET_RPC_URL = "https://api.mainnet-beta.solana.com";
+const RPC_TIMEOUT_MS = 8_000;
+
+const splitRpcEnv = (value?: string) =>
+  (value ?? "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const uniqueRpcUrls = (...lists: Array<string | string[] | undefined>) =>
+  Array.from(
+    new Set(
+      lists
+        .flat()
+        .filter((url): url is string => Boolean(url && url.trim()))
+        .map((url) => url.trim()),
+    ),
+  );
+
+const ETHEREUM_SEPOLIA_RPC_URLS = uniqueRpcUrls(
+  splitRpcEnv(process.env.ETHEREUM_SEPOLIA_RPC_URLS),
+  splitRpcEnv(process.env.NEXT_PUBLIC_ETHEREUM_SEPOLIA_RPC_URLS),
+  [
+    "https://ethereum-sepolia-rpc.publicnode.com",
+    "https://ethereum-sepolia.publicnode.com",
+    "https://sepolia.drpc.org",
+  ],
+);
+
+const SONIC_TESTNET_RPC_URLS = uniqueRpcUrls(
+  splitRpcEnv(process.env.SONIC_RPC_URLS),
+  splitRpcEnv(process.env.NEXT_PUBLIC_SONIC_RPC_URLS),
+  ["https://rpc.testnet.soniclabs.com"],
+);
+
+const KNOWN_ERC20_DECIMALS: Record<string, number> = Object.fromEntries(
+  Object.values(BRIDGE_USDC_ADDRESSES)
+    .filter((address) => address.startsWith("0x"))
+    .map((address) => [
+      address.toLowerCase(),
+      address.toLowerCase() === ARC_NATIVE_USDC_ADDRESS
+        ? ARC_NATIVE_USDC_DECIMALS
+        : 6,
+    ]),
+);
 
 const RPC_URL_FALLBACKS: Record<string, string[]> = {
-  [ARC_TESTNET_CHAIN_ID]: [...ARC_RPC_ENDPOINTS],
+  "arc-testnet": [...ARC_RPC_ENDPOINTS],
+  arc: ["https://rpc.arc-scan.org"],
   "421614": [
     "https://sepolia-rollup.arbitrum.io/rpc",
     "https://arbitrum-sepolia-rpc.publicnode.com",
@@ -29,15 +81,33 @@ const RPC_URL_FALLBACKS: Record<string, string[]> = {
     "https://arbitrum-sepolia-rpc.publicnode.com",
     "https://arbitrum-sepolia.drpc.org",
   ],
+  arbitrum: [
+    "https://arb1.arbitrum.io/rpc",
+    "https://arbitrum-one.publicnode.com",
+  ],
   "base-sepolia": ["https://sepolia.base.org"],
+  base: ["https://mainnet.base.org"],
   "optimism-sepolia": ["https://sepolia.optimism.io"],
+  optimism: ["https://mainnet.optimism.io"],
   "avalanche-fuji": ["https://api.avax-test.network/ext/bc/C/rpc"],
-  "ethereum-sepolia": ["https://sepolia.drpc.org"],
+  avalanche: ["https://api.avax.network/ext/bc/C/rpc"],
+  "ethereum-sepolia": ETHEREUM_SEPOLIA_RPC_URLS,
+  "11155111": ETHEREUM_SEPOLIA_RPC_URLS,
+  ethereum: [
+    "https://ethereum-rpc.publicnode.com",
+    "https://ethereum.publicnode.com",
+  ],
   "linea-sepolia": ["https://rpc.sepolia.linea.build"],
+  linea: ["https://rpc.linea.build"],
   "polygon-amoy": ["https://rpc-amoy.polygon.technology"],
-  "sonic-testnet": ["https://rpc.testnet.soniclabs.com"],
+  polygon: ["https://polygon.drpc.org", "https://polygon-rpc.com"],
+  "sonic-testnet": SONIC_TESTNET_RPC_URLS,
+  "14601": SONIC_TESTNET_RPC_URLS,
+  sonic: ["https://rpc.soniclabs.com"],
   "unichain-sepolia": ["https://sepolia.unichain.org"],
-  [SOLANA_DEVNET_CHAIN_ID]: [SOLANA_DEVNET_RPC_URL],
+  unichain: ["https://mainnet.unichain.org"],
+  solana: [SOLANA_DEVNET_RPC_URL],
+  "solana-mainnet": [SOLANA_MAINNET_RPC_URL],
 };
 
 const getRpcUrlsForChain = (chainId: string) => {
@@ -58,7 +128,11 @@ const readWithRpcFallback = async <T,>(
   for (const candidateRpcUrl of rpcUrls) {
     try {
       const publicClient = createPublicClient({
-        transport: http(candidateRpcUrl),
+        transport: http(candidateRpcUrl, {
+          timeout: RPC_TIMEOUT_MS,
+          retryCount: 0,
+          fetchOptions: { cache: "no-store" },
+        }),
       });
 
       return await read(publicClient);
@@ -73,6 +147,11 @@ const readWithRpcFallback = async <T,>(
 
   throw lastError ?? new Error("No RPC endpoints available");
 };
+
+const walletBalanceRateLimit = createIpRateLimiter({
+  windowMs: 60_000,
+  maxRequests: 120,
+});
 
 const isValidSolanaAddress = (address: string) => {
   try {
@@ -107,7 +186,7 @@ const readSolanaTokenBalance = async (
   return total.toFixed(6);
 };
 
-export async function POST(request: NextRequest) {
+export async function handleWalletBalancePost(request: NextRequest) {
   try {
     const { address, chainId, tokenAddress, balanceType } =
       await request.json();
@@ -116,6 +195,16 @@ export async function POST(request: NextRequest) {
     if (!address || !chainId) {
       return NextResponse.json(
         { error: "Missing required parameters" },
+        { status: 400 },
+      );
+    }
+
+    const addressValid = isSolanaBridgeChain(normalizedChainId)
+      ? isValidSolanaAddress(address)
+      : isAddress(address);
+    if (!addressValid) {
+      return NextResponse.json(
+        { error: "Invalid wallet address" },
         { status: 400 },
       );
     }
@@ -130,7 +219,7 @@ export async function POST(request: NextRequest) {
     }
     const rpcUrl = rpcUrls[0];
 
-    if (normalizedChainId === SOLANA_DEVNET_CHAIN_ID) {
+    if (isSolanaBridgeChain(normalizedChainId)) {
       if (!isValidSolanaAddress(address)) {
         return NextResponse.json({ balance: "0.00" });
       }
@@ -181,7 +270,7 @@ export async function POST(request: NextRequest) {
     }
 
     const contractAddress =
-      tokenAddress || getUSDCAddressForChain(String(chainId));
+      tokenAddress || getUSDCAddressForChain(normalizedChainId);
     if (!contractAddress) {
       return NextResponse.json(
         { balance: "0.00", error: "Token not supported on this chain" },
@@ -190,7 +279,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (
-      normalizedChainId === ARC_TESTNET_CHAIN_ID &&
+      isNativeArcUsdcChain(normalizedChainId) &&
       contractAddress.toLowerCase() === ARC_NATIVE_USDC_ADDRESS
     ) {
       const formattedBalance = await readWithRpcFallback(
@@ -214,17 +303,26 @@ export async function POST(request: NextRequest) {
     const formattedBalance = await readWithRpcFallback(
       normalizedChainId,
       async (publicClient) => {
-        const contract = getContract({
-          address: contractAddress as `0x${string}`,
+        const token = getAddress(contractAddress.toLowerCase());
+        const owner = getAddress(address.toLowerCase());
+        const knownDecimals = KNOWN_ERC20_DECIMALS[token.toLowerCase()];
+
+        const balance = (await publicClient.readContract({
+          address: token,
           abi: erc20Abi,
-          client: publicClient,
-        });
+          functionName: "balanceOf",
+          args: [owner],
+        })) as bigint;
 
-        const balance = (await contract.read.balanceOf([
-          address as `0x${string}`,
-        ])) as bigint;
-
-        const decimals = (await contract.read.decimals()) as number;
+        const decimals =
+          knownDecimals ??
+          Number(
+            await publicClient.readContract({
+              address: token,
+              abi: erc20Abi,
+              functionName: "decimals",
+            }),
+          );
 
         return Number(formatUnits(balance, decimals)).toFixed(6);
       },
@@ -240,20 +338,21 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function getUSDCAddressForChain(chainId: string): string | null {
-  const addressMap: { [key: string]: string } = {
-    "arc-testnet": "0x3600000000000000000000000000000000000000",
-    "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-    "optimism-sepolia": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
-    "avalanche-fuji": "0x5425890298aed601595a70ab815c96711a31bc65",
-    "arbitrum-sepolia": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-    "ethereum-sepolia": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-    "linea-sepolia": "0xfece4462d57bd51a6a552365a011b95f0e16d9b7",
-    "polygon-amoy": "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
-    "sonic-testnet": "0x0BA304580ee7c9a980CF72e55f5Ed2E9fd30Bc51",
-    solana: SOLANA_DEVNET_USDC_MINT,
-    "unichain-sepolia": "0x31d0220469e10c4E71834a79b1f276d740d3768F",
-  };
+export const POST = withFrontendOriginGate(async (request: NextRequest) => {
+  const rate = walletBalanceRateLimit.consume(getTrustedClientIp(request.headers));
+  if (rate.limited) {
+    return NextResponse.json(
+      { error: "Rate limit exceeded. Please slow down." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(rate.retryAfterSeconds) },
+      },
+    );
+  }
 
-  return addressMap[chainId] || null;
+  return handleWalletBalancePost(request);
+});
+
+function getUSDCAddressForChain(chainId: string): string | null {
+  return BRIDGE_USDC_ADDRESSES[chainId.toLowerCase()] || null;
 }

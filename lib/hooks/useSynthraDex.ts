@@ -69,7 +69,7 @@ export function useSynthraDex(rpcUrl?: string) {
   );
 
   const buildApprovalTransaction = useCallback(
-    (tokenAddress: string, amount?: string): SynthraTransaction =>
+    (tokenAddress: string, amount: string): SynthraTransaction =>
       buildSynthraApprovalTransaction({
         tokenAddress,
         amount,

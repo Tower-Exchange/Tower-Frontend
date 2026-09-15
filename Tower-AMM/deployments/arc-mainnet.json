@@ -1,0 +1,17 @@
+{
+  "network": "arc-mainnet",
+  "chainId": 5042,
+  "factory": "0x49Aa1C63EA4E126a88E27A2A7673e6d31D954A3C",
+  "router": "0x8CF57F51442834e7ff3dC343F6Be9d7945222F4B",
+  "feeTo": "0x6396DfE7949c785Ab8b3e4634d0c9aB97d700a4B",
+  "feeToSetter": "0xe71dD45E7d21409b04b609D0E6C67FFff592d43d",
+  "skipTokenSetup": false,
+  "tokens": {
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "pairs": [],
+  "incomplete": true,
+  "note": "Factory and router are live. Only Arc native USDC is a known mainnet token. Testnet EURC/USDT/CIRBTC/CNGN/QCAD addresses must not be registered. Re-run npm run deploy:arc-mainnet to revoke those tokens; do not FORCE_REDEPLOY.",
+  "deployer": "0xe71dD45E7d21409b04b609D0E6C67FFff592d43d",
+  "timestamp": "2026-09-15T14:34:00.000Z"
+}

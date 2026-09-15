@@ -1,4 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isFrontendBrowserRequest } from "@/lib/server/frontendRequestGuard";
+import {
+  getRpcClientIp,
+  inspectRpcProxyRequest,
+} from "@/lib/server/rpcProxyGuard";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +30,16 @@ const SOLANA_RPC_ENDPOINTS = uniqueRpcEndpoints(
   ["https://api.devnet.solana.com"],
 );
 
+const SOLANA_MAINNET_RPC_ENDPOINTS = uniqueRpcEndpoints(
+  splitRpcEnv(process.env.SOLANA_MAINNET_RPC_URLS),
+  splitRpcEnv(process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URLS),
+  [
+    process.env.SOLANA_MAINNET_RPC_URL,
+    process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL,
+  ].filter((value): value is string => Boolean(value && value.trim())),
+  ["https://api.mainnet-beta.solana.com"],
+);
+
 const RETRYABLE_RPC_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 const RPC_RETRY_DELAY_MS = 400;
 
@@ -44,6 +59,11 @@ const RPC_ENDPOINTS: Record<string, string[]> = {
     splitRpcEnv(process.env.NEXT_PUBLIC_OPTIMISM_RPC_URLS),
     ["https://mainnet.optimism.io", "https://optimism-rpc.publicnode.com"],
   ),
+  "130": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.UNICHAIN_MAINNET_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_UNICHAIN_MAINNET_RPC_URLS),
+    ["https://mainnet.unichain.org", "https://unichain-rpc.publicnode.com"],
+  ),
   "1301": uniqueRpcEndpoints(
     splitRpcEnv(process.env.UNICHAIN_RPC_URLS),
     splitRpcEnv(process.env.NEXT_PUBLIC_UNICHAIN_RPC_URLS),
@@ -54,10 +74,15 @@ const RPC_ENDPOINTS: Record<string, string[]> = {
     splitRpcEnv(process.env.NEXT_PUBLIC_POLYGON_RPC_URLS),
     ["https://polygon.drpc.org", "https://polygon-rpc.com"],
   ),
+  "146": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.SONIC_MAINNET_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_SONIC_MAINNET_RPC_URLS),
+    ["https://rpc.soniclabs.com", "https://sonic-rpc.publicnode.com"],
+  ),
   "14601": uniqueRpcEndpoints(
     splitRpcEnv(process.env.SONIC_RPC_URLS),
     splitRpcEnv(process.env.NEXT_PUBLIC_SONIC_RPC_URLS),
-    ["https://rpc.testnet.soniclabs.com", "https://sonic-testnet.rpc.thirdweb.com"],
+    ["https://rpc.testnet.soniclabs.com"],
   ),
   "8453": uniqueRpcEndpoints(
     splitRpcEnv(process.env.BASE_RPC_URLS),
@@ -73,15 +98,31 @@ const RPC_ENDPOINTS: Record<string, string[]> = {
       "https://avalanche-fuji.rpc.thirdweb.com",
     ],
   ),
+  "43114": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.AVALANCHE_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_AVALANCHE_RPC_URLS),
+    [
+      "https://api.avax.network/ext/bc/C/rpc",
+      "https://avalanche-c-chain-rpc.publicnode.com",
+      "https://avax.drpc.org",
+    ],
+  ),
   "42161": uniqueRpcEndpoints(
     splitRpcEnv(process.env.ARBITRUM_RPC_URLS),
     splitRpcEnv(process.env.NEXT_PUBLIC_ARBITRUM_RPC_URLS),
     ["https://arb1.arbitrum.io/rpc", "https://arbitrum-one.publicnode.com"],
   ),
   "59141": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.LINEA_SEPOLIA_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_LINEA_SEPOLIA_RPC_URLS),
     splitRpcEnv(process.env.LINEA_RPC_URLS),
     splitRpcEnv(process.env.NEXT_PUBLIC_LINEA_RPC_URLS),
     ["https://rpc.sepolia.linea.build", "https://linea-sepolia-rpc.publicnode.com"],
+  ),
+  "59144": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.LINEA_MAINNET_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_LINEA_MAINNET_RPC_URLS),
+    ["https://rpc.linea.build", "https://linea-rpc.publicnode.com"],
   ),
   "80002": uniqueRpcEndpoints(
     splitRpcEnv(process.env.POLYGON_AMOY_RPC_URLS),
@@ -120,13 +161,24 @@ const RPC_ENDPOINTS: Record<string, string[]> = {
       "https://rpc.testnet.arc.network",
     ].filter((value): value is string => Boolean(value && value.trim())),
   ),
+  "5042": uniqueRpcEndpoints(
+    splitRpcEnv(process.env.ARC_MAINNET_RPC_URLS),
+    splitRpcEnv(process.env.NEXT_PUBLIC_ARC_MAINNET_RPC_URLS),
+    [
+      process.env.ARC_MAINNET_RPC_URL,
+      process.env.NEXT_PUBLIC_ARC_MAINNET_RPC_URL,
+      "https://rpc.arc-scan.org",
+    ].filter((value): value is string => Boolean(value && value.trim())),
+  ),
   solana: SOLANA_RPC_ENDPOINTS,
+  "solana-mainnet": SOLANA_MAINNET_RPC_ENDPOINTS,
   "11155111": uniqueRpcEndpoints(
     splitRpcEnv(process.env.ETHEREUM_SEPOLIA_RPC_URLS),
     splitRpcEnv(process.env.NEXT_PUBLIC_ETHEREUM_SEPOLIA_RPC_URLS),
     [
-      "https://sepolia.drpc.org",
       "https://ethereum-sepolia-rpc.publicnode.com",
+      "https://ethereum-sepolia.publicnode.com",
+      "https://sepolia.drpc.org",
       "https://eth-sepolia-public.blastapi.io",
     ],
   ),
@@ -170,7 +222,11 @@ type RouteContext = {
   }>;
 };
 
-export async function POST(request: NextRequest, { params }: RouteContext) {
+export async function handleRpcChainProxy(
+  request: NextRequest,
+  { params }: RouteContext,
+  options: { allowBroadcast: boolean },
+) {
   const { chainId } = await params;
   const rpcUrls = RPC_ENDPOINTS[chainId];
 
@@ -183,6 +239,16 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
 
   try {
     const body = await request.text();
+    const inspection = inspectRpcProxyRequest({
+      chainId,
+      bodyText: body,
+      clientIp: getRpcClientIp(request),
+      allowBroadcast: options.allowBroadcast,
+    });
+    if (!inspection.ok) {
+      return inspection.response;
+    }
+
     let lastError: unknown = null;
 
     for (const [index, rpcUrl] of rpcUrls.entries()) {
@@ -255,4 +321,10 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       { status: 502 }
     );
   }
+}
+
+export async function POST(request: NextRequest, context: RouteContext) {
+  return handleRpcChainProxy(request, context, {
+    allowBroadcast: isFrontendBrowserRequest(request),
+  });
 }

@@ -10,6 +10,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useAccount, usePublicClient, useWalletClient } from "wagmi";
 import {
   bridgeTokens,
+  getUnavailableCircleRouteError,
   isBridgeRouteSupported,
   estimateBridgeTime,
   getBridgeFees,
@@ -20,6 +21,7 @@ import {
   formatBridgeAmount,
   isValidAddress,
 } from "@/lib/bridgeService";
+import { isSolanaBridgeChain } from "@/lib/bridgeNetworks";
 
 export interface BridgeState {
   isLoading: boolean;
@@ -183,9 +185,17 @@ export function useBridge(): UseBridgeResult {
         return "This bridge route is not supported";
       }
 
+      const unavailableRouteError = getUnavailableCircleRouteError(
+        fromChain,
+        toChain,
+      );
+      if (unavailableRouteError) {
+        return unavailableRouteError;
+      }
+
       // Validate destination address
       const toChainConfig = SUPPORTED_CHAINS[toChain as keyof typeof SUPPORTED_CHAINS];
-      const chainType = toChain === "solana" ? "solana" : "evm";
+      const chainType = isSolanaBridgeChain(toChain) ? "solana" : "evm";
       
       if (!isValidAddress(toAddress, chainType)) {
         return `Invalid ${toChainConfig?.name} address format`;

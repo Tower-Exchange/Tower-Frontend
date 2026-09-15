@@ -1,5 +1,7 @@
 "use client";
 
+import { sanitizeAmountInput } from "@/lib/positiveAmount";
+
 interface AmountInputProps {
   amount: string;
   onChange?: (value: string) => void;
@@ -16,7 +18,9 @@ export const AmountInput = ({
       type="text"
       value={`$${amount}`}
       onChange={
-        onChange ? (e) => onChange(e.target.value.replace("$", "")) : undefined
+        onChange
+          ? (e) => onChange(sanitizeAmountInput(e.target.value))
+          : undefined
       }
       readOnly={readOnly}
       className="w-full bg-transparent text-center text-[2.35rem] font-semibold tracking-tight text-foreground outline-none sm:text-[2.8rem] lg:text-[2.2rem] xl:text-[2.35rem]"

@@ -99,7 +99,7 @@ INSERT INTO activities (
 
 The `activities` table stores trading activities:
 
-- **wallet_address**: User's wallet address (from Privy)
+- **wallet_address**: User's wallet address
 - **type**: Activity type (Swap, Deposit, Withdraw, Transfer)
 - **source_currency_ticker**: Source token (USDC, ETH, etc.)
 - **source_network_name**: Source network (Arc, Ethereum, etc.)
@@ -167,7 +167,7 @@ await closeChatSession(sessionId);
 ## Security Notes
 
 - The current RLS policies allow all reads/writes. For production, you should:
-  - Integrate Supabase Auth with Privy
+  - Integrate Supabase Auth with RainbowKit wallet sessions
   - Update RLS policies to restrict access by authenticated user ID
   - Consider using service role key for server-side operations
 

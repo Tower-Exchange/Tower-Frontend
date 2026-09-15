@@ -17,8 +17,17 @@ import {
   type EIP1193Provider,
 } from "viem";
 import {
+  arbitrum,
+  avalanche,
+  base,
   baseSepolia,
+  linea,
+  mainnet,
+  optimism,
   optimismSepolia,
+  polygon,
+  sonic,
+  unichain,
   arbitrumSepolia,
   avalancheFuji,
 } from "viem/chains";
@@ -32,27 +41,68 @@ import { Buffer } from "buffer";
 import { Connection, Transaction, VersionedTransaction } from "@solana/web3.js";
 import {
   ArcTestnet,
+  Arbitrum,
   ArbitrumSepolia,
+  Avalanche,
   AvalancheFuji,
+  Base,
   BaseSepolia,
+  Ethereum,
   EthereumSepolia,
+  Linea,
   LineaSepolia,
+  Optimism,
   OptimismSepolia,
+  Polygon,
   PolygonAmoy,
-  SonicTestnet,
-  UnichainSepolia,
+  Solana,
   SolanaDevnet,
+  Sonic,
+  SonicTestnet,
+  Unichain,
+  UnichainSepolia,
 } from "@circle-fin/bridge-kit/chains";
 import {
   getConnectedSolanaAddress,
   getConnectedSolanaProvider,
   type SolanaWalletProvider,
 } from "@/lib/solanaWalletStore";
-import { ARC_ADD_NETWORK_PARAMS } from "@/lib/arcNetwork";
+import {
+  ARC_ADD_NETWORK_PARAMS,
+  ARC_MAINNET_ADD_NETWORK_PARAMS,
+} from "@/lib/arcNetwork";
+import {
+  BRIDGE_USDC_ADDRESSES,
+  getBridgeNetworkMode,
+  isSolanaBridgeChain,
+  isSolanaMainnetChain,
+} from "@/lib/bridgeNetworks";
+import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 
 // Chain mapping for viem
 const VIEM_CHAIN_MAP: Record<number, ViemChain> = {
-  // Testnet chains
+  1: mainnet,
+  10: optimism,
+  130: unichain,
+  137: polygon,
+  146: sonic,
+  8453: base,
+  43114: avalanche,
+  42161: arbitrum,
+  59144: linea,
+  5042: {
+    id: 5042,
+    name: "Arc",
+    network: "arc",
+    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
+    rpcUrls: {
+      default: { http: ["https://rpc.arc-scan.org"] },
+      public: { http: ["https://rpc.arc-scan.org"] },
+    },
+    blockExplorers: {
+      default: { name: "ArcScan", url: "https://arc-scan.org" },
+    },
+  } as ViemChain,
   84532: baseSepolia,
   11155420: optimismSepolia,
   43113: avalancheFuji,
@@ -63,8 +113,8 @@ const VIEM_CHAIN_MAP: Record<number, ViemChain> = {
     network: "ethereum-sepolia",
     nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
     rpcUrls: {
-      default: { http: ["https://sepolia.drpc.org"] },
-      public: { http: ["https://sepolia.drpc.org"] },
+      default: { http: ["https://ethereum-sepolia-rpc.publicnode.com"] },
+      public: { http: ["https://ethereum-sepolia-rpc.publicnode.com"] },
     },
   } as ViemChain,
   59141: {
@@ -119,19 +169,18 @@ const VIEM_CHAIN_MAP: Record<number, ViemChain> = {
   } as ViemChain,
 };
 
-const SOLANA_DEVNET_USDC_MINT = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
 const SOLANA_RPC_PROXY_PATH = "/api/rpc/solana";
+const SOLANA_MAINNET_RPC_PROXY_PATH = "/api/rpc/solana-mainnet";
 
 // Chain configurations for supported networks
 export const SUPPORTED_CHAINS = {
-  // PRODUCTION CHAINS
   "arc-testnet": {
     name: "Arc Testnet",
     chainId: 5042002,
     rpcUrl: "https://rpc.testnet.arc.network",
     nativeTokenSymbol: "USDC",
     circleChain: "Arc_Testnet" as const,
-    usdcAddress: "0x3600000000000000000000000000000000000000",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["arc-testnet"],
   },
   "base-sepolia": {
     name: "Base Sepolia",
@@ -139,7 +188,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://sepolia.base.org",
     nativeTokenSymbol: "ETH",
     circleChain: "Base_Sepolia" as const,
-    usdcAddress: "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["base-sepolia"],
   },
   "optimism-sepolia": {
     name: "Optimism Sepolia",
@@ -147,7 +196,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://sepolia.optimism.io",
     nativeTokenSymbol: "ETH",
     circleChain: "Optimism_Sepolia" as const,
-    usdcAddress: "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["optimism-sepolia"],
   },
   "avalanche-fuji": {
     name: "Avalanche Fuji",
@@ -155,7 +204,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://api.avax-test.network/ext/bc/C/rpc",
     nativeTokenSymbol: "AVAX",
     circleChain: "Avalanche_Fuji" as const,
-    usdcAddress: "0x5425890298aed601595a70ab815c96711a31bc65",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["avalanche-fuji"],
   },
   "arbitrum-sepolia": {
     name: "Arbitrum Sepolia",
@@ -163,15 +212,15 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://sepolia-rollup.arbitrum.io/rpc",
     nativeTokenSymbol: "ETH",
     circleChain: "Arbitrum_Sepolia" as const,
-    usdcAddress: "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["arbitrum-sepolia"],
   },
   "ethereum-sepolia": {
     name: "Ethereum Sepolia",
     chainId: 11155111,
-    rpcUrl: "https://sepolia.drpc.org",
+    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
     nativeTokenSymbol: "ETH",
     circleChain: "Ethereum_Sepolia" as const,
-    usdcAddress: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["ethereum-sepolia"],
   },
   "linea-sepolia": {
     name: "Linea Sepolia",
@@ -179,7 +228,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://rpc.sepolia.linea.build",
     nativeTokenSymbol: "ETH",
     circleChain: "Linea_Sepolia" as const,
-    usdcAddress: "0xfece4462d57bd51a6a552365a011b95f0e16d9b7",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["linea-sepolia"],
   },
   "polygon-amoy": {
     name: "Polygon Amoy",
@@ -187,7 +236,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://rpc-amoy.polygon.technology",
     nativeTokenSymbol: "POL",
     circleChain: "Polygon_Amoy_Testnet" as const,
-    usdcAddress: "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["polygon-amoy"],
   },
   "sonic-testnet": {
     name: "Sonic Testnet",
@@ -195,7 +244,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://rpc.testnet.soniclabs.com",
     nativeTokenSymbol: "S",
     circleChain: "Sonic_Testnet" as const,
-    usdcAddress: "0x0BA304580ee7c9a980CF72e55f5Ed2E9fd30Bc51",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["sonic-testnet"],
   },
   "unichain-sepolia": {
     name: "Unichain Sepolia",
@@ -203,7 +252,7 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://sepolia.unichain.org",
     nativeTokenSymbol: "UNI",
     circleChain: "Unichain_Sepolia" as const,
-    usdcAddress: "0x31d0220469e10c4E71834a79b1f276d740d3768F",
+    usdcAddress: BRIDGE_USDC_ADDRESSES["unichain-sepolia"],
   },
   solana: {
     name: "Solana Devnet",
@@ -211,16 +260,115 @@ export const SUPPORTED_CHAINS = {
     rpcUrl: "https://api.devnet.solana.com",
     nativeTokenSymbol: "SOL",
     circleChain: "Solana_Devnet" as const,
-    usdcAddress: SOLANA_DEVNET_USDC_MINT,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.solana,
+  },
+  arc: {
+    name: "Arc",
+    chainId: 5042,
+    rpcUrl: "https://rpc.arc-scan.org",
+    nativeTokenSymbol: "USDC",
+    circleChain: "Arc" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.arc,
+  },
+  ethereum: {
+    name: "Ethereum",
+    chainId: 1,
+    rpcUrl: "https://ethereum.publicnode.com",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Ethereum" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.ethereum,
+  },
+  optimism: {
+    name: "Optimism",
+    chainId: 10,
+    rpcUrl: "https://mainnet.optimism.io",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Optimism" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.optimism,
+  },
+  unichain: {
+    name: "Unichain",
+    chainId: 130,
+    rpcUrl: "https://mainnet.unichain.org",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Unichain" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.unichain,
+  },
+  polygon: {
+    name: "Polygon",
+    chainId: 137,
+    rpcUrl: "https://polygon-rpc.com",
+    nativeTokenSymbol: "POL",
+    circleChain: "Polygon" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.polygon,
+  },
+  sonic: {
+    name: "Sonic",
+    chainId: 146,
+    rpcUrl: "https://rpc.soniclabs.com",
+    nativeTokenSymbol: "S",
+    circleChain: "Sonic" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.sonic,
+  },
+  base: {
+    name: "Base",
+    chainId: 8453,
+    rpcUrl: "https://mainnet.base.org",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Base" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.base,
+  },
+  avalanche: {
+    name: "Avalanche",
+    chainId: 43114,
+    rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
+    nativeTokenSymbol: "AVAX",
+    circleChain: "Avalanche" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.avalanche,
+  },
+  arbitrum: {
+    name: "Arbitrum",
+    chainId: 42161,
+    rpcUrl: "https://arb1.arbitrum.io/rpc",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Arbitrum" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.arbitrum,
+  },
+  linea: {
+    name: "Linea",
+    chainId: 59144,
+    rpcUrl: "https://rpc.linea.build",
+    nativeTokenSymbol: "ETH",
+    circleChain: "Linea" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES.linea,
+  },
+  "solana-mainnet": {
+    name: "Solana",
+    chainId: 101,
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    nativeTokenSymbol: "SOL",
+    circleChain: "Solana" as const,
+    usdcAddress: BRIDGE_USDC_ADDRESSES["solana-mainnet"],
   },
 };
 
-const getSolanaBridgeRpcUrl = () => {
+const getSolanaBridgeRpcUrl = (chainKey: string = "solana") => {
+  const chainConfig =
+    SUPPORTED_CHAINS[chainKey as keyof typeof SUPPORTED_CHAINS];
+  const fallbackRpcUrl =
+    chainConfig && isSolanaBridgeChain(chainKey)
+      ? chainConfig.rpcUrl
+      : SUPPORTED_CHAINS.solana.rpcUrl;
+
   if (typeof window === "undefined") {
-    return SUPPORTED_CHAINS.solana.rpcUrl;
+    return fallbackRpcUrl;
   }
 
-  return new URL(SOLANA_RPC_PROXY_PATH, window.location.origin).toString();
+  const proxyPath = isSolanaMainnetChain(chainKey)
+    ? SOLANA_MAINNET_RPC_PROXY_PATH
+    : SOLANA_RPC_PROXY_PATH;
+
+  return new URL(proxyPath, window.location.origin).toString();
 };
 
 const createSolanaBridgeConnection = (rpcUrl: string) =>
@@ -241,6 +389,15 @@ const SUPPORTED_EVM_CIRCLE_CHAINS = [
   PolygonAmoy,
   SonicTestnet,
   UnichainSepolia,
+  Ethereum,
+  Optimism,
+  Unichain,
+  Polygon,
+  Sonic,
+  Base,
+  Avalanche,
+  Arbitrum,
+  Linea,
 ] as const;
 
 
@@ -728,6 +885,16 @@ const CIRCLE_CHAIN_OBJECTS: Record<string, any> = {
   "sonic-testnet": SonicTestnet,
   "unichain-sepolia": UnichainSepolia,
   solana: SolanaDevnet,
+  ethereum: Ethereum,
+  optimism: Optimism,
+  unichain: Unichain,
+  polygon: Polygon,
+  sonic: Sonic,
+  base: Base,
+  avalanche: Avalanche,
+  arbitrum: Arbitrum,
+  linea: Linea,
+  "solana-mainnet": Solana,
 };
 const RELAYER_RETRYABLE_BRIDGE_ERROR_PATTERNS = [
   "circle relayer failed to forward the mint transaction",
@@ -842,8 +1009,8 @@ export async function waitForForwardedBridgeCompletion(
   }
 
   const sourceAdapter =
-    request.fromChain === "solana"
-      ? await ensureSolanaBridgeAdapter()
+    isSolanaBridgeChain(request.fromChain)
+      ? await ensureSolanaBridgeAdapter(request.fromChain)
       : await ensureEvmBridgeAdapter(request);
 
   if (!sourceAdapter) {
@@ -1078,6 +1245,20 @@ const getWalletAddChainParams = (
     return ARC_ADD_NETWORK_PARAMS;
   }
 
+  if (chainKey === "arc") {
+    const proxyRpcUrl = getBridgeRpcProxyUrl(chainConfig.chainId);
+    if (proxyRpcUrl) {
+      return [
+        {
+          ...ARC_MAINNET_ADD_NETWORK_PARAMS[0],
+          rpcUrls: [proxyRpcUrl, ...ARC_MAINNET_ADD_NETWORK_PARAMS[0].rpcUrls],
+        },
+      ];
+    }
+
+    return ARC_MAINNET_ADD_NETWORK_PARAMS;
+  }
+
   const viemChain = VIEM_CHAIN_MAP[chainConfig.chainId];
   if (!viemChain) {
     return null;
@@ -1106,7 +1287,7 @@ export async function ensureWalletOnBridgeChain(
   chainKey: string,
   walletClient?: BridgeRequest["walletClient"],
 ): Promise<void> {
-  if (chainKey === "solana") {
+  if (isSolanaBridgeChain(chainKey)) {
     return;
   }
 
@@ -1263,11 +1444,10 @@ const getConfiguredCustomBridgeFee = (
     return null;
   }
 
-  const recipientAddress =
-    sourceChain === "solana"
-      ? BRIDGE_CUSTOM_FEE_RECIPIENT_SOLANA
-      : BRIDGE_CUSTOM_FEE_RECIPIENT_EVM;
-  const recipientChainType = sourceChain === "solana" ? "solana" : "evm";
+  const recipientAddress = isSolanaBridgeChain(sourceChain)
+    ? BRIDGE_CUSTOM_FEE_RECIPIENT_SOLANA
+    : BRIDGE_CUSTOM_FEE_RECIPIENT_EVM;
+  const recipientChainType = isSolanaBridgeChain(sourceChain) ? "solana" : "evm";
 
   if (!recipientAddress || !isValidAddress(recipientAddress, recipientChainType)) {
     return null;
@@ -1314,6 +1494,7 @@ type PreparedSolanaRecipient = {
 
 const prepareSolanaBridgeRecipient = async (
   walletAddress: string,
+  chainId: string = "solana",
 ): Promise<PreparedSolanaRecipient> => {
   const response = await fetch("/api/bridge/prepare-solana-recipient", {
     method: "POST",
@@ -1322,6 +1503,7 @@ const prepareSolanaBridgeRecipient = async (
     },
     body: JSON.stringify({
       walletAddress,
+      chainId,
     }),
   });
 
@@ -1396,7 +1578,7 @@ export interface SupportedToken {
  * Create a Bridge Kit adapter from the browser wallet provider
  * Uses Circle's createViemAdapterFromProvider factory function for user-controlled transactions
  * 
- * Works with both Privy and RainbowKit/wagmi
+ * Works with RainbowKit/wagmi injected providers
  */
 async function createBridgeKitAdapter(): Promise<any> {
   // Get the EIP1193 provider from the browser window
@@ -1507,14 +1689,14 @@ export async function createBridgeKitAdapterFromClients(
         return publicClient;
       }
 
-      const supportedChainConfig = Object.values(SUPPORTED_CHAINS).find(
-        (config) => config.chainId === requestedChain.id,
+      const supportedEntry = Object.entries(SUPPORTED_CHAINS).find(
+        ([, config]) => config.chainId === requestedChain.id,
       );
 
-      if (supportedChainConfig && supportedChainConfig.chainId !== SUPPORTED_CHAINS.solana.chainId) {
+      if (supportedEntry && !isSolanaBridgeChain(supportedEntry[0])) {
         return createEVMPublicClient(
-          supportedChainConfig.chainId,
-          `/api/rpc/${supportedChainConfig.chainId}`,
+          supportedEntry[1].chainId,
+          `/api/rpc/${supportedEntry[1].chainId}`,
         );
       }
 
@@ -1553,7 +1735,7 @@ let solanaAdapterAddress: string | null = null;
  * Helper function to initialize Solana adapter from the shared wallet store
  * Returns null if a supported Solana wallet is not connected
  */
-async function initializeSolanaAdapter(): Promise<any> {
+async function initializeSolanaAdapter(chainKey: string = "solana"): Promise<any> {
   try {
     const rawProvider = getConnectedSolanaProvider();
     const connectedAddress = getConnectedSolanaAddress();
@@ -1565,7 +1747,7 @@ async function initializeSolanaAdapter(): Promise<any> {
     }
 
     setSolanaProviderAddress(rawProvider, address);
-    const solanaRpcUrl = getSolanaBridgeRpcUrl();
+    const solanaRpcUrl = getSolanaBridgeRpcUrl(chainKey);
     const provider =
       rawProvider as Parameters<typeof createSolanaAdapterFromProvider>[0]["provider"];
     const adapter = await createSolanaAdapterFromProvider({
@@ -1573,7 +1755,7 @@ async function initializeSolanaAdapter(): Promise<any> {
       connection: createSolanaBridgeConnection(solanaRpcUrl),
       capabilities: {
         addressContext: "user-controlled",
-        supportedChains: [SolanaDevnet],
+        supportedChains: [isSolanaMainnetChain(chainKey) ? Solana : SolanaDevnet],
       },
     });
     console.log("Solana adapter initialized successfully", {
@@ -1611,7 +1793,9 @@ async function ensureEvmBridgeAdapter(
   return evmAdapter;
 }
 
-async function ensureSolanaBridgeAdapter(): Promise<any> {
+async function ensureSolanaBridgeAdapter(
+  chainKey: string = "solana",
+): Promise<any> {
   const provider = getConnectedSolanaProvider();
   const currentAddress = getSolanaProviderAddress(
     provider,
@@ -1625,7 +1809,7 @@ async function ensureSolanaBridgeAdapter(): Promise<any> {
     return null;
   }
 
-  solanaAdapter = await initializeSolanaAdapter();
+  solanaAdapter = await initializeSolanaAdapter(chainKey);
   solanaAdapterProvider = solanaAdapter ? provider : null;
   solanaAdapterAddress = solanaAdapter ? currentAddress : null;
   return solanaAdapter;
@@ -1677,7 +1861,7 @@ function createEVMPublicClient(chainId: number, rpcUrl: string): PublicClient {
 /**
  * Bridge tokens from one chain to another
  * 
- * This function executes cross-chain bridge transactions using the user's browser wallet (Privy).
+ * This function executes cross-chain bridge transactions using the user's browser wallet.
  * The bridge is executed client-side with your wallet's signing capability.
  * 
  * Usage:
@@ -1694,7 +1878,7 @@ export async function bridgeTokens(
 ): Promise<BridgeResponse> {
   const bridgeProgress: BridgeProgressSnapshot = { events: [] };
   (window as any).__lastBridgeProgress = bridgeProgress;
-  const shouldTrackEvmWalletChain = request.fromChain !== "solana";
+  const shouldTrackEvmWalletChain = !isSolanaBridgeChain(request.fromChain);
   const initialWalletChainId = shouldTrackEvmWalletChain
     ? await getActiveWalletChainId(request.walletClient)
     : null;
@@ -1702,6 +1886,13 @@ export async function bridgeTokens(
     request.useForwarder ?? DEFAULT_USE_CIRCLE_FORWARDER;
 
   try {
+    if (!isPositiveDecimalAmount(request.amount)) {
+      return {
+        success: false,
+        error: "Amount must be a positive number",
+      };
+    }
+
     const fromChainConfig = SUPPORTED_CHAINS[request.fromChain as keyof typeof SUPPORTED_CHAINS];
     const toChainConfig = SUPPORTED_CHAINS[request.toChain as keyof typeof SUPPORTED_CHAINS];
 
@@ -1712,13 +1903,31 @@ export async function bridgeTokens(
       };
     }
 
+    if (!isBridgeRouteSupported(request.fromChain, request.toChain)) {
+      return {
+        success: false,
+        error: "This bridge route is not supported. Source and destination must be different chains on the same network.",
+      };
+    }
+
+    const unavailableRouteError = getUnavailableCircleRouteError(
+      request.fromChain,
+      request.toChain,
+    );
+    if (unavailableRouteError) {
+      return {
+        success: false,
+        error: unavailableRouteError,
+      };
+    }
+
     const requestedDestinationAddress = request.toAddress
       ? normalizeWalletAddress(request.toAddress)
       : "";
 
     // Determine if destination is cross-chain type (EVM <-> Solana)
-    const isFromEVM = request.fromChain !== "solana";
-    const isToEVM = request.toChain !== "solana";
+    const isFromEVM = !isSolanaBridgeChain(request.fromChain);
+    const isToEVM = !isSolanaBridgeChain(request.toChain);
     const isChainTypeCrossover = isFromEVM !== isToEVM;
 
     // Validate destination address for cross-chain type transitions
@@ -1730,13 +1939,14 @@ export async function bridgeTokens(
           error: `Destination ${chainType} address is required when bridging from ${isFromEVM ? "EVM" : "Solana"} to ${isToEVM ? "EVM" : "Solana"}`,
         };
       }
+    }
 
-      // Validate address format matches destination chain type
+    if (requestedDestinationAddress) {
       const addressType = isToEVM ? "evm" : "solana";
       if (!isValidAddress(requestedDestinationAddress, addressType)) {
         return {
           success: false,
-          error: `Invalid ${addressType.toUpperCase()} address format for destination chain`,
+          error: `Invalid ${addressType.toUpperCase()} destination address`,
         };
       }
     }
@@ -1744,7 +1954,7 @@ export async function bridgeTokens(
     let resolvedDestinationAddress = requestedDestinationAddress;
     let preparedSolanaRecipient: PreparedSolanaRecipient | null = null;
 
-    if (request.toChain === "solana") {
+    if (isSolanaBridgeChain(request.toChain)) {
       if (!requestedDestinationAddress) {
         return {
           success: false,
@@ -1755,6 +1965,7 @@ export async function bridgeTokens(
       try {
         preparedSolanaRecipient = await prepareSolanaBridgeRecipient(
           requestedDestinationAddress,
+          request.toChain,
         );
         // AppKit expects the Solana owner wallet address as recipientAddress;
         // it derives the USDC ATA internally when building the CCTP burn.
@@ -1801,6 +2012,14 @@ export async function bridgeTokens(
     const toChainObj = CIRCLE_CHAIN_OBJECTS[request.toChain];
 
     if (!fromChainObj || !toChainObj) {
+      if (request.fromChain === "arc" || request.toChain === "arc") {
+        return {
+          success: false,
+          error:
+            "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.",
+        };
+      }
+
       return {
         success: false,
         error: `Chain objects not found for ${request.fromChain} or ${request.toChain}`,
@@ -1817,7 +2036,7 @@ export async function bridgeTokens(
       };
     }
 
-    if (request.fromChain !== "solana") {
+    if (!isSolanaBridgeChain(request.fromChain)) {
       try {
         const provider = getEvmRequestProvider(request.walletClient);
         if (provider) {
@@ -1846,12 +2065,12 @@ export async function bridgeTokens(
     let fromAdapter: any = null;
     let toAdapter: any = null;
 
-    if (request.fromChain === "solana") {
-      fromAdapter = await ensureSolanaBridgeAdapter();
+    if (isSolanaBridgeChain(request.fromChain)) {
+      fromAdapter = await ensureSolanaBridgeAdapter(request.fromChain);
       if (!fromAdapter) {
         return {
           success: false,
-          error: "Solana wallet not connected. Please connect a supported Solana wallet to Solana Devnet.",
+          error: `Solana wallet not connected. Please connect a supported Solana wallet to ${fromChainConfig.name}.`,
         };
       }
     } else {
@@ -1865,12 +2084,12 @@ export async function bridgeTokens(
     }
 
     if (requiresDestinationAdapter) {
-      if (request.toChain === "solana") {
-        toAdapter = await ensureSolanaBridgeAdapter();
+      if (isSolanaBridgeChain(request.toChain)) {
+        toAdapter = await ensureSolanaBridgeAdapter(request.toChain);
         if (!toAdapter) {
           return {
             success: false,
-            error: "Solana wallet not connected. Please connect a supported Solana wallet to Solana Devnet.",
+            error: `Solana wallet not connected. Please connect a supported Solana wallet to ${toChainConfig.name}.`,
           };
         }
       } else {
@@ -2368,7 +2587,7 @@ export async function bridgeTokens(
  */
 export function getViemClient(chainId: string): PublicClient | null {
   const chainConfig = SUPPORTED_CHAINS[chainId as keyof typeof SUPPORTED_CHAINS];
-  if (!chainConfig || chainId === "solana") return null;
+  if (!chainConfig || isSolanaBridgeChain(chainId)) return null;
   
   return createEVMPublicClient(chainConfig.chainId, chainConfig.rpcUrl);
 }
@@ -2376,6 +2595,28 @@ export function getViemClient(chainId: string): PublicClient | null {
 /**
  * Validate if a bridge route is supported
  */
+export function isCircleBridgeRouteReady(
+  fromChain: string,
+  toChain: string,
+): boolean {
+  return Boolean(CIRCLE_CHAIN_OBJECTS[fromChain] && CIRCLE_CHAIN_OBJECTS[toChain]);
+}
+
+export function getUnavailableCircleRouteError(
+  fromChain: string,
+  toChain: string,
+): string | null {
+  if (isCircleBridgeRouteReady(fromChain, toChain)) {
+    return null;
+  }
+
+  if (fromChain === "arc" || toChain === "arc") {
+    return "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.";
+  }
+
+  return "This bridge route is not available.";
+}
+
 export function isBridgeRouteSupported(
   fromChain: string,
   toChain: string
@@ -2383,8 +2624,16 @@ export function isBridgeRouteSupported(
   const fromSupported = fromChain in SUPPORTED_CHAINS;
   const toSupported = toChain in SUPPORTED_CHAINS;
   const sameChain = fromChain === toChain;
+  const fromMode = getBridgeNetworkMode(fromChain);
+  const toMode = getBridgeNetworkMode(toChain);
 
-  return fromSupported && toSupported && !sameChain;
+  return (
+    fromSupported &&
+    toSupported &&
+    !sameChain &&
+    fromMode !== null &&
+    fromMode === toMode
+  );
 }
 
 /**
@@ -2405,7 +2654,7 @@ export function getSupportedBridgeRoutes(): Array<{
 
   Object.entries(SUPPORTED_CHAINS).forEach(([fromChainId, fromConfig]) => {
     Object.entries(SUPPORTED_CHAINS).forEach(([toChainId, toConfig]) => {
-      if (fromChainId !== toChainId) {
+      if (isBridgeRouteSupported(fromChainId, toChainId)) {
         routes.push({
           from: fromChainId,
           to: toChainId,
@@ -2438,42 +2687,22 @@ export async function getBridgeFees(
  * Can filter by chain if needed
  */
 export function getSupportedTokens(filterByChain?: string): SupportedToken[] {
+  const chainEntries = Object.entries(SUPPORTED_CHAINS);
+  const chainAddresses = Object.fromEntries(
+    chainEntries.map(([id, config]) => [id, config.usdcAddress]),
+  );
   const allTokens: SupportedToken[] = [
     {
       symbol: "USDC",
       name: "USD Coin",
       decimals: 6,
-      chains: [
-        "arc-testnet",
-        "base-sepolia",
-        "optimism-sepolia",
-        "avalanche-fuji",
-        "arbitrum-sepolia",
-        "ethereum-sepolia",
-        "linea-sepolia",
-        "polygon-amoy",
-        "sonic-testnet",
-        "unichain-sepolia",
-        "solana",
-      ],
-      chainAddresses: {
-        "arc-testnet": "0x3600000000000000000000000000000000000000",
-        "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-        "optimism-sepolia": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
-        "avalanche-fuji": "0x5425890298aed601595a70ab815c96711a31bc65",
-        "arbitrum-sepolia": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-        "ethereum-sepolia": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-        "linea-sepolia": "0xfece4462d57bd51a6a552365a011b95f0e16d9b7",
-        "polygon-amoy": "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
-        "sonic-testnet": "0x0BA304580ee7c9a980CF72e55f5Ed2E9fd30Bc51",
-        "unichain-sepolia": "0x31d0220469e10c4E71834a79b1f276d740d3768F",
-        solana: SOLANA_DEVNET_USDC_MINT,
-      },
+      chains: chainEntries.map(([id]) => id),
+      chainAddresses,
       logo: "/assets/usdc.svg",
     },
   ];
 
-  if (filterByChain) {
+  if (filterByChain && filterByChain !== "all") {
     return allTokens.filter((token) => token.chains.includes(filterByChain));
   }
 
@@ -2516,11 +2745,17 @@ export function estimateBridgeTime(
   // Different chains have different settlement times
   const timeMap: Record<string, string> = {
     "arc-testnet": "1-2 minutes",
+    arc: "1-2 minutes",
     "base-sepolia": "2-5 minutes",
+    base: "2-5 minutes",
     "optimism-sepolia": "3-7 minutes",
+    optimism: "3-7 minutes",
     "avalanche-fuji": "2-5 minutes",
+    avalanche: "2-5 minutes",
     "arbitrum-sepolia": "2-5 minutes",
+    arbitrum: "2-5 minutes",
     solana: "5-15 seconds",
+    "solana-mainnet": "5-15 seconds",
   };
 
   return timeMap[toChain] || "2-5 minutes";
@@ -2548,8 +2783,11 @@ export function isValidAddress(address: string, chainType: "evm" | "solana"): bo
   const normalizedAddress = normalizeWalletAddress(address);
 
   if (chainType === "evm") {
-    // EVM address: 0x followed by 40 hex characters
-    return /^0x[a-fA-F0-9]{40}$/.test(normalizedAddress);
+    if (!/^0x[a-fA-F0-9]{40}$/.test(normalizedAddress)) {
+      return false;
+    }
+
+    return normalizedAddress.toLowerCase() !== "0x0000000000000000000000000000000000000000";
   } else if (chainType === "solana") {
     // Solana address: base58 (no 0, O, I, l), uppercase and lowercase, 32-44 characters
     return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(normalizedAddress);
@@ -2560,6 +2798,8 @@ export function isValidAddress(address: string, chainType: "evm" | "solana"): bo
 export default {
   bridgeTokens,
   isBridgeRouteSupported,
+  isCircleBridgeRouteReady,
+  getUnavailableCircleRouteError,
   getSupportedBridgeRoutes,
   getSupportedTokens,
   getTokenAddressForChain,

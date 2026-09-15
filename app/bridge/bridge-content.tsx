@@ -22,7 +22,17 @@ import {
 import { useWalletClient } from "wagmi";
 import SettingsModal from "@/components/SettingsModal";
 import useBridge from "@/lib/hooks/useBridge";
-import { SUPPORTED_CHAINS, ensureWalletOnBridgeChain, isValidAddress, normalizeWalletAddress } from "@/lib/bridgeService";
+import { SUPPORTED_CHAINS, ensureWalletOnBridgeChain, isCircleBridgeRouteReady, isValidAddress, normalizeWalletAddress } from "@/lib/bridgeService";
+import {
+  type BridgeNetworkMode,
+  getBridgeTransactionUrl,
+  inferBridgeNetworkMode,
+  isSolanaBridgeChain,
+  parseBridgeNetworkMode,
+  readStoredBridgeNetworkMode,
+  storeBridgeNetworkMode,
+} from "@/lib/bridgeNetworks";
+import { BRIDGE_UI_CHAINS } from "@/lib/bridgeChainUi";
 import { registerBridgeActivity, registerBridgeFee } from "@/lib/supabase";
 import { BridgeErrorModal } from "@/components/BridgeErrorModal";
 import ActivityTabModal, {
@@ -34,17 +44,6 @@ import TransactionStepsModal, {
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import usdcLogo from "@/public/assets/usdc.svg";
-import arcTestnetLogo from "@/public/assets/ARCSvg.svg";
-import solanaLogo from "@/public/assets/solana.svg";
-import baseSepoliaLogo from "@/public/assets/Base Sepolia logo.svg";
-import optimismSepoliaLogo from "@/public/assets/Optimism Sepolia logo.svg";
-import avalancheFujiLogo from "@/public/assets/Avalanche Fuji logo.svg";
-import arbitrumSepoliaLogo from "@/public/assets/Arbitrum Sepolia logo (2).svg";
-import ethereumSepoliaLogo from "@/public/assets/EthLogo.svg";
-import lineaSepoliaLogo from "@/public/assets/Linea-Token_Round.svg";
-import polygonAmoyLogo from "@/public/assets/polygon.svg";
-import sonicTestnetLogo from "@/public/assets/S_token.svg";
-import unichainSepoliaLogo from "@/public/assets/Mainnet.svg";
 import { formatUsdAmount } from "@/lib/formatUsdAmount";
 import TokenInput from "@/components/reusable/TokenInput";
 
@@ -188,35 +187,9 @@ const BRIDGE_TOKENS: BridgeToken[] = [
   },
 ];
 
-const BRIDGE_CHAINS: BridgeChain[] = [
-  { id: "arc-testnet", name: "Arc Testnet", logo: arcTestnetLogo },
-  { id: "solana", name: "Solana Devnet", logo: solanaLogo },
-  { id: "base-sepolia", name: "Base Sepolia", logo: baseSepoliaLogo },
-  {
-    id: "optimism-sepolia",
-    name: "Optimism Sepolia",
-    logo: optimismSepoliaLogo,
-  },
-  { id: "avalanche-fuji", name: "Avalanche Fuji", logo: avalancheFujiLogo },
-  {
-    id: "arbitrum-sepolia",
-    name: "Arbitrum Sepolia",
-    logo: arbitrumSepoliaLogo,
-  },
-  {
-    id: "ethereum-sepolia",
-    name: "Ethereum Sepolia",
-    logo: ethereumSepoliaLogo,
-  },
-  { id: "linea-sepolia", name: "Linea Sepolia", logo: lineaSepoliaLogo },
-  { id: "polygon-amoy", name: "Polygon Amoy", logo: polygonAmoyLogo },
-  { id: "sonic-testnet", name: "Sonic Testnet", logo: sonicTestnetLogo },
-  {
-    id: "unichain-sepolia",
-    name: "Unichain Sepolia",
-    logo: unichainSepoliaLogo,
-  },
-];
+const BRIDGE_CHAINS: BridgeChain[] = BRIDGE_UI_CHAINS.map(
+  ({ id, name, logo }) => ({ id, name, logo }),
+);
 
 export default function BridgePageContent({
   onNavigateToSwap,
@@ -242,6 +215,18 @@ export default function BridgePageContent({
   const [toToken, setToToken] = useState<BridgeToken | null>(null);
   const [fromChainId, setFromChainId] = useState<string | null>(null);
   const [toChainId, setToChainId] = useState<string | null>(null);
+  const [networkMode, setNetworkMode] = useState<BridgeNetworkMode>(() => {
+    if (typeof window === "undefined") {
+      return "testnet";
+    }
+
+    const params = new URLSearchParams(window.location.search);
+    return (
+      inferBridgeNetworkMode(params.get("fromChain"), params.get("toChain")) ||
+      parseBridgeNetworkMode(params.get("network")) ||
+      readStoredBridgeNetworkMode()
+    );
+  });
   const [slippageTolerance, setSlippageTolerance] = useState(0.5);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
@@ -286,22 +271,50 @@ export default function BridgePageContent({
     const stored = localStorage.getItem("bridgeRecentAddresses");
     if (stored) {
       try {
-        setRecentAddresses(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        const sanitized = Array.isArray(parsed)
+          ? parsed.filter(
+              (address): address is string =>
+                typeof address === "string" &&
+                (isValidAddress(address, "evm") ||
+                  isValidAddress(address, "solana")),
+            )
+          : [];
+        setRecentAddresses(sanitized);
+        if (sanitized.length !== (Array.isArray(parsed) ? parsed.length : 0)) {
+          localStorage.setItem(
+            "bridgeRecentAddresses",
+            JSON.stringify(sanitized),
+          );
+        }
       } catch (e) {
         console.error("Failed to parse recent addresses", e);
+        localStorage.removeItem("bridgeRecentAddresses");
       }
     }
   }, []);
 
   const saveRecentAddress = (address: string) => {
-    if (!address.trim()) return;
+    const chainType = isSolanaBridgeChain(toChainId) ? "solana" : "evm";
+    const normalized = normalizeWalletAddress(address);
+    if (!isValidAddress(normalized, chainType)) {
+      return;
+    }
     const updated = [
-      address,
-      ...recentAddresses.filter((a) => a !== address),
+      normalized,
+      ...recentAddresses.filter(
+        (item) => item.toLowerCase() !== normalized.toLowerCase(),
+      ),
     ].slice(0, 5);
     setRecentAddresses(updated);
     localStorage.setItem("bridgeRecentAddresses", JSON.stringify(updated));
   };
+
+  const destinationChainType = isSolanaBridgeChain(toChainId) ? "solana" : "evm";
+  const canSaveReceivingAddress = isValidAddress(
+    normalizeWalletAddress(receivingAddress),
+    destinationChainType,
+  );
 
   const getBridgeAddressForChain = useCallback(
     (chainId: string | null, fallbackAddress?: string | null) => {
@@ -309,7 +322,7 @@ export default function BridgePageContent({
         return fallbackAddress || "";
       }
 
-      if (chainId === "solana") {
+      if (isSolanaBridgeChain(chainId)) {
         return solanaAddress || "";
       }
 
@@ -321,17 +334,17 @@ export default function BridgePageContent({
   const getDestinationBridgeAddress = useCallback(
     (chainId: string | null, fallbackAddress?: string | null) => {
       const manualAddress = normalizeWalletAddress(receivingAddress);
-      const chainType = chainId === "solana" ? "solana" : "evm";
+      const chainType = isSolanaBridgeChain(chainId) ? "solana" : "evm";
 
       if (manualAddress && isValidAddress(manualAddress, chainType)) {
         return manualAddress;
       }
 
-      if (chainId === "solana") {
+      if (isSolanaBridgeChain(chainId)) {
         return "";
       }
 
-      if (fromChainId === "solana") {
+      if (isSolanaBridgeChain(fromChainId)) {
         return "";
       }
 
@@ -361,7 +374,31 @@ export default function BridgePageContent({
       setToToken(selectedToToken || BRIDGE_TOKENS[0]);
       setToChainId(toChain);
     }
+
+    const inferredMode =
+      inferBridgeNetworkMode(fromChain, toChain) ||
+      parseBridgeNetworkMode(searchParams.get("network"));
+    if (inferredMode) {
+      setNetworkMode(inferredMode);
+      storeBridgeNetworkMode(inferredMode);
+    }
   }, [searchParams]);
+
+  const openChainSelect = useCallback(
+    (side: "from" | "to") => {
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      current.set("side", side);
+      current.set("network", networkMode);
+      if (fromChainId) {
+        current.set("fromChain", fromChainId);
+      }
+      if (toChainId) {
+        current.set("toChain", toChainId);
+      }
+      router.push(`/bridge/select?${current.toString()}`);
+    },
+    [fromChainId, networkMode, router, searchParams, toChainId],
+  );
 
   useEffect(() => {
     const previousFromChainId = previousFromChainIdRef.current;
@@ -369,7 +406,7 @@ export default function BridgePageContent({
     if (
       previousFromChainId &&
       previousFromChainId !== fromChainId &&
-      fromChainId === "solana" &&
+      isSolanaBridgeChain(fromChainId) &&
       !isSolanaConnected &&
       !isConnectingSolana
     ) {
@@ -394,7 +431,7 @@ export default function BridgePageContent({
       manualAddress &&
       toChainId
     ) {
-      const chainType = toChainId === "solana" ? "solana" : "evm";
+      const chainType = isSolanaBridgeChain(toChainId) ? "solana" : "evm";
       if (!isValidAddress(manualAddress, chainType)) {
         setReceivingAddress("");
       }
@@ -409,7 +446,7 @@ export default function BridgePageContent({
       return;
     }
 
-    if (fromChainId === "solana" && !isSolanaConnected) {
+    if (isSolanaBridgeChain(fromChainId) && !isSolanaConnected) {
       setWalletBalance("0.00");
       return;
     }
@@ -536,7 +573,7 @@ export default function BridgePageContent({
   const fetchBridgeGasBalances = useCallback(async () => {
     try {
       if (fromChainId) {
-        if (fromChainId === "solana" && !isSolanaConnected) {
+        if (isSolanaBridgeChain(fromChainId) && !isSolanaConnected) {
           setSourceGasBalance("0.00");
         } else {
           const sourceAddress = getBridgeAddressForChain(
@@ -666,7 +703,7 @@ export default function BridgePageContent({
 
     const manualAddress = normalizeWalletAddress(receivingAddress);
     if (manualAddress && nextToChainId) {
-      const chainType = nextToChainId === "solana" ? "solana" : "evm";
+      const chainType = isSolanaBridgeChain(nextToChainId) ? "solana" : "evm";
       if (!isValidAddress(manualAddress, chainType)) {
         setReceivingAddress("");
       }
@@ -696,12 +733,12 @@ export default function BridgePageContent({
   }, [fromAmount, fromChainId, fromToken?.logo, fromToken?.symbol, toAmount, toChainId]);
 
   const handleBridge = useCallback(async () => {
-    if (!user && fromChainId !== "solana") {
+    if (!user && !isSolanaBridgeChain(fromChainId)) {
       alert("Please connect your wallet first");
       return;
     }
 
-    if (fromChainId === "solana" && !isSolanaConnected) {
+    if (isSolanaBridgeChain(fromChainId) && !isSolanaConnected) {
       openSolanaConnectModal();
       return;
     }
@@ -730,7 +767,7 @@ export default function BridgePageContent({
       return;
     }
 
-    if (fromChainId && fromChainId !== "solana") {
+    if (fromChainId && !isSolanaBridgeChain(fromChainId)) {
       try {
         await ensureWalletOnBridgeChain(fromChainId, walletClient);
       } catch (error) {
@@ -784,8 +821,8 @@ export default function BridgePageContent({
 
       const activityWalletAddress =
         user?.wallet?.address ||
-        (toChainId !== "solana" ? destinationAddress : "") ||
-        (fromChainId !== "solana" ? sourceAddress : "");
+        (!isSolanaBridgeChain(toChainId) ? destinationAddress : "") ||
+        (!isSolanaBridgeChain(fromChainId) ? sourceAddress : "");
       const fromChainName =
         SUPPORTED_CHAINS[fromChainId as keyof typeof SUPPORTED_CHAINS]?.name ||
         fromChainId ||
@@ -808,7 +845,7 @@ export default function BridgePageContent({
         ? getBridgeTokenAddress(toChainConfig, tokenSymbol)
         : null;
       const bridgeFeeRecipientAddress = bridgeHook.customFeeEnabled
-        ? fromChainId === "solana"
+        ? isSolanaBridgeChain(fromChainId)
           ? process.env.NEXT_PUBLIC_BRIDGE_FEE_RECIPIENT_SOLANA?.trim() || null
           : process.env.NEXT_PUBLIC_BRIDGE_FEE_RECIPIENT_EVM?.trim() || null
         : null;
@@ -932,7 +969,7 @@ export default function BridgePageContent({
   const fromDisplayToken = fromToken ?? BRIDGE_TOKENS[0];
   const toDisplayToken = toToken ?? BRIDGE_TOKENS[0];
   const sourceBridgeAddress =
-    fromChainId === "solana"
+    isSolanaBridgeChain(fromChainId)
       ? isSolanaConnected
         ? getBridgeAddressForChain(fromChainId, user?.wallet?.address)
         : ""
@@ -961,11 +998,17 @@ export default function BridgePageContent({
     ? (BRIDGE_CHAINS.find((c) => c.id === toChainId) ?? null)
     : null;
   const requiresManualDestinationAddress =
-    Boolean(toChainId) && (toChainId === "solana" || fromChainId === "solana");
+    Boolean(toChainId) && (isSolanaBridgeChain(toChainId) || isSolanaBridgeChain(fromChainId));
   const isDestinationAddressMissing =
     requiresManualDestinationAddress && !destinationBridgeAddress;
   const isSameChainBridgeRoute =
     Boolean(fromChainId && toChainId) && fromChainId === toChainId;
+  const isCctpUnavailable = Boolean(
+    fromChainId &&
+      toChainId &&
+      fromChainId !== toChainId &&
+      !isCircleBridgeRouteReady(fromChainId, toChainId),
+  );
   const isBridgeActionDisabled =
     !fromChainId ||
     !toChainId ||
@@ -973,11 +1016,12 @@ export default function BridgePageContent({
     parseFloat(fromAmount) <= 0 ||
     isDestinationAddressMissing ||
     isSameChainBridgeRoute ||
+    isCctpUnavailable ||
     isBridgeBalanceInsufficient ||
     bridgeHook.isBridging ||
     bridgeHook.isLoading;
-  const needsSourceEvmWallet = fromChainId !== "solana" && !user;
-  const needsSourceSolanaWallet = fromChainId === "solana" && !isSolanaConnected;
+  const needsSourceEvmWallet = !isSolanaBridgeChain(fromChainId) && !user;
+  const needsSourceSolanaWallet = isSolanaBridgeChain(fromChainId) && !isSolanaConnected;
   const shouldPromptConnectWallet =
     needsSourceEvmWallet ||
     needsSourceSolanaWallet;
@@ -986,30 +1030,13 @@ export default function BridgePageContent({
     : isBridgeActionDisabled;
   const destinationChainName =
     toChain?.name ??
-    (toChainId === "solana" ? "Solana Devnet" : "destination chain");
-  const bridgeExplorerUrls: Record<string, string> = {
-    "arc-testnet": "https://testnet.arcscan.app/tx/",
-    "base-sepolia": "https://sepolia.basescan.org/tx/",
-    "optimism-sepolia": "https://sepolia-optimism.etherscan.io/tx/",
-    "avalanche-fuji": "https://testnet.snowtrace.io/tx/",
-    "arbitrum-sepolia": "https://sepolia.arbiscan.io/tx/",
-    "ethereum-sepolia": "https://sepolia.etherscan.io/tx/",
-    "linea-sepolia": "https://sepolia.lineascan.build/tx/",
-    "polygon-amoy": "https://amoy.polygonscan.com/tx/",
-    "sonic-testnet": "https://testnet.sonicscan.org/tx/",
-    solana: "https://explorer.solana.com/tx/",
-    "unichain-sepolia": "https://unichain-sepolia.blockscout.com/tx/",
-  };
+    (isSolanaBridgeChain(toChainId) ? "Solana" : "destination chain");
   const bridgeTransactionChainId =
     bridgeHook.status === "completed" ? toChainId : fromChainId;
-  const bridgeTransactionUrl =
-    bridgeHook.transactionHash &&
-    bridgeTransactionChainId &&
-    bridgeExplorerUrls[bridgeTransactionChainId]
-      ? bridgeTransactionChainId === "solana"
-        ? `${bridgeExplorerUrls[bridgeTransactionChainId]}${bridgeHook.transactionHash}?cluster=devnet`
-        : `${bridgeExplorerUrls[bridgeTransactionChainId]}${bridgeHook.transactionHash}`
-      : null;
+  const bridgeTransactionUrl = getBridgeTransactionUrl(
+    bridgeTransactionChainId,
+    bridgeHook.transactionHash,
+  );
   const fromUsdValueLabel = formatUsdAmount(
     fromAmount,
     fromToken?.usdPrice ?? fromDisplayToken.usdPrice,
@@ -1070,9 +1097,15 @@ export default function BridgePageContent({
     }
 
     if (isDestinationAddressMissing) {
-      return toChainId === "solana"
+      return isSolanaBridgeChain(toChainId)
         ? "Enter Solana Address"
         : "Enter EVM Address";
+    }
+
+    if (isCctpUnavailable) {
+      return fromChainId === "arc" || toChainId === "arc"
+        ? "Arc CCTP unavailable"
+        : "Route unavailable";
     }
 
     if (isBridgeBalanceInsufficient) {
@@ -1355,11 +1388,7 @@ export default function BridgePageContent({
                 <motion.button
                   type="button"
                   onClick={() => {
-                    const current = new URLSearchParams(
-                      Array.from(searchParams.entries()),
-                    );
-                    current.set("side", "from");
-                    router.push(`/bridge/select?${current.toString()}`);
+                    openChainSelect("from");
                   }}
                   className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-secondary px-3 py-2 transition-colors hover:bg-secondary/80"
                   whileHover={{ scale: 1.02 }}
@@ -1439,11 +1468,7 @@ export default function BridgePageContent({
                 <motion.button
                   type="button"
                   onClick={() => {
-                    const current = new URLSearchParams(
-                      Array.from(searchParams.entries()),
-                    );
-                    current.set("side", "to");
-                    router.push(`/bridge/select?${current.toString()}`);
+                    openChainSelect("to");
                   }}
                   className="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-lg bg-secondary px-3 py-2 transition-colors hover:bg-secondary/80"
                   whileHover={{ scale: 1.02 }}
@@ -1497,9 +1522,9 @@ export default function BridgePageContent({
               <span>
                 {receivingAddress.trim()
                   ? `${receivingAddress.trim().slice(0, 6)}...${receivingAddress.trim().slice(-4)}`
-                  : toChainId === "solana"
+                  : isSolanaBridgeChain(toChainId)
                     ? "Add Solana receiving wallet"
-                    : fromChainId === "solana"
+                    : isSolanaBridgeChain(fromChainId)
                       ? "Add EVM receiving wallet"
                       : "Add receiving wallet"}
               </span>
@@ -1617,9 +1642,9 @@ export default function BridgePageContent({
                           Enter Destination Address
                         </label>
                         <span className="text-[11px] font-normal text-muted-foreground/70">
-                          {toChainId === "solana"
+                          {isSolanaBridgeChain(toChainId)
                             ? "(Solana)"
-                            : fromChainId === "solana"
+                            : isSolanaBridgeChain(fromChainId)
                               ? "(EVM)"
                               : ""}
                         </span>
@@ -1631,7 +1656,7 @@ export default function BridgePageContent({
                           value={receivingAddress}
                           onChange={(e) => setReceivingAddress(e.target.value)}
                           placeholder={
-                            toChainId === "solana"
+                            isSolanaBridgeChain(toChainId)
                               ? "Enter Solana address..."
                               : "0x..."
                           }
@@ -1651,15 +1676,15 @@ export default function BridgePageContent({
 
                     <motion.button
                       type="button"
-                      disabled={!receivingAddress.trim()}
+                      disabled={!canSaveReceivingAddress}
                       onClick={() => {
-                        saveRecentAddress(normalizeWalletAddress(receivingAddress));
+                        saveRecentAddress(receivingAddress);
                         setIsReceivingOpen(false);
                       }}
-                      whileHover={receivingAddress.trim() ? { scale: 1.01 } : {}}
-                      whileTap={receivingAddress.trim() ? { scale: 0.98 } : {}}
+                      whileHover={canSaveReceivingAddress ? { scale: 1.01 } : {}}
+                      whileTap={canSaveReceivingAddress ? { scale: 0.98 } : {}}
                       className={`w-full rounded-full py-3 text-xs font-semibold transition-all shadow-md ${
-                        !receivingAddress.trim()
+                        !canSaveReceivingAddress
                           ? "bg-secondary text-muted-foreground/50 cursor-not-allowed border border-border/30"
                           : "bg-primary text-[#0C0C0D] hover:bg-primary/90 cursor-pointer"
                       }`}

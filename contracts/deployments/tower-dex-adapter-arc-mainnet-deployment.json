@@ -1,0 +1,12 @@
+{
+  "contract": "TowerDexAdapter",
+  "network": "arc-mainnet",
+  "chainId": 5042,
+  "adapter": "0x15097095A3EF3ACd3e8405dF7734221e35093a0f",
+  "router": "0x8CF57F51442834e7ff3dC343F6Be9d7945222F4B",
+  "executor": "0x4b50f993C63f3819710cc650cA0FAbF91396Fa50",
+  "owner": "0xe71dD45E7d21409b04b609D0E6C67FFff592d43d",
+  "deployer": "0xe71dD45E7d21409b04b609D0E6C67FFff592d43d",
+  "timestamp": "2026-09-15T15:39:58.051Z",
+  "blockExplorerUrl": "https://arc-scan.org/address/0x15097095A3EF3ACd3e8405dF7734221e35093a0f"
+}

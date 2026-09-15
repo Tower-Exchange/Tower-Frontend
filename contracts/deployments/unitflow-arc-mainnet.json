@@ -1,0 +1,32 @@
+{
+  "source": "UnitFlow Finance Arc mainnet deployment",
+  "network": "arc-mainnet",
+  "chainId": 5042,
+  "notes": [
+    "Live quotes and swaps still use Arc testnet UnitFlow addresses in lib/unitflowDex.ts.",
+    "No Universal Router, Permit2, or UnitFlow WUSDC was published with this set.",
+    "TowerSwapExecutor can call UnitFlowV3Router directly. Do not deploy UnitFlowAdapter until a mainnet WUSDC wrap token exists.",
+    "NFTDescriptor, NonfungibleTokenPositionDescriptor, and V3Migrator are not used by the aggregator.",
+    "Leave UNITFLOW_MAINNET_DIRECT_PAIRS empty until UnitFlow seeds supported token pools on 5042."
+  ],
+  "v3": {
+    "factory": "0xc9719bF56c4C22BaA1549885B03F38a04897ff10",
+    "swapRouter": "0xc53D630e43d565DA0D84b8D637982cA61dC3f4B6",
+    "quoter": "0x73D01db0dfA3C7E31F97cDDB73F8Bbf21cAFcB08",
+    "nonfungiblePositionManager": "0x771AB382ca3770416D2C71E076fc6C3760Bb0ccf",
+    "tickLens": "0x1c2eC90a61b238Dc5e0D79F1D737d735E795Df66",
+    "multicall": "0xD4BB7b3b1e4563480cEd52Bf5Ff0b8d0B5012FE9"
+  },
+  "unusedForAggregator": {
+    "nftDescriptor": "0xd84Ce312Dc2C1C7bf447ED6ABc38558D7B90BD6b",
+    "nonfungibleTokenPositionDescriptor": "0xbD9B978993c4F48bdc49708e0bf1bAe12999aF06",
+    "v3Migrator": "0xdd3b7F43b1281A3CFea726C0F7F0051467b51A33"
+  },
+  "tokens": {
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "towerSwapExecutorAllowlist": {
+    "routeTargets": ["0xc53D630e43d565DA0D84b8D637982cA61dC3f4B6"],
+    "approvalSpenders": ["0xc53D630e43d565DA0D84b8D637982cA61dC3f4B6"]
+  }
+}

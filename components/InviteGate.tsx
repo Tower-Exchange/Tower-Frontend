@@ -11,7 +11,6 @@ import {
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
-import { usePrivy } from "@privy-io/react-auth";
 
 import { ErrorBadge } from "@/components/ui/error-badge";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
@@ -37,51 +36,6 @@ const normalizeWalletAddress = (walletAddress?: string | null) => {
 
   const normalizedWalletAddress = walletAddress.trim().toLowerCase();
   return normalizedWalletAddress || null;
-};
-
-const getPrivyWalletAddresses = (privyUser: unknown) => {
-  const typedPrivyUser = privyUser as
-    | {
-        wallet?: { address?: string | null } | null;
-        linkedAccounts?: unknown[];
-      }
-    | null
-    | undefined;
-  const walletAddresses = new Set<string>();
-
-  const primaryWalletAddress = normalizeWalletAddress(
-    typedPrivyUser?.wallet?.address,
-  );
-  if (primaryWalletAddress) {
-    walletAddresses.add(primaryWalletAddress);
-  }
-
-  for (const linkedAccount of typedPrivyUser?.linkedAccounts ?? []) {
-    if (!linkedAccount || typeof linkedAccount !== "object") {
-      continue;
-    }
-
-    const typedLinkedAccount = linkedAccount as {
-      address?: string | null;
-      chainType?: string | null;
-    };
-
-    if (
-      typedLinkedAccount.chainType &&
-      typedLinkedAccount.chainType !== "ethereum"
-    ) {
-      continue;
-    }
-
-    const linkedWalletAddress = normalizeWalletAddress(
-      typedLinkedAccount.address,
-    );
-    if (linkedWalletAddress) {
-      walletAddresses.add(linkedWalletAddress);
-    }
-  }
-
-  return Array.from(walletAddresses);
 };
 
 const clearLegacyInviteAccess = () => {
@@ -209,27 +163,13 @@ export default function InviteGate({ children }: InviteGateProps) {
   const [isCheckingRegistration, setIsCheckingRegistration] = useState(false);
   const [isFinalizingInvite, setIsFinalizingInvite] = useState(false);
   const { authenticated, login, user, ready } = useRainbowKitAuth();
-  const {
-    authenticated: privyAuthenticated,
-    ready: privyReady,
-    user: privyUser,
-  } = usePrivy();
 
   const currentWalletAddress = normalizeWalletAddress(user?.wallet?.address);
-  const legacyPrivyWalletAddresses = useMemo(
-    () => getPrivyWalletAddresses(privyUser),
-    [privyUser],
-  );
   const hasPendingInviteAccess = accessState.status === "pending-invite";
   const hasWalletAccess =
     accessState.status === "wallet-verified" &&
     currentWalletAddress !== null &&
     accessState.walletAddress === currentWalletAddress;
-  const hasLegacyPrivyWalletAccess =
-    privyReady &&
-    privyAuthenticated &&
-    currentWalletAddress !== null &&
-    legacyPrivyWalletAddresses.includes(currentWalletAddress);
 
   const requireInviteForWallet = useCallback((
     walletAddress: string | null,
@@ -285,29 +225,6 @@ export default function InviteGate({ children }: InviteGateProps) {
     }
   }, [authenticated, currentWalletAddress]);
 
-  useEffect(() => {
-    if (
-      !ready ||
-      !privyReady ||
-      !authenticated ||
-      !currentWalletAddress ||
-      hasWalletAccess ||
-      !hasLegacyPrivyWalletAccess
-    ) {
-      return;
-    }
-
-    grantWalletAccess(currentWalletAddress);
-  }, [
-    authenticated,
-    currentWalletAddress,
-    grantWalletAccess,
-    hasLegacyPrivyWalletAccess,
-    hasWalletAccess,
-    privyReady,
-    ready,
-  ]);
-
   // Keep the app locked until the connected wallet has been explicitly verified.
   // Invite-code users may connect after entering a code, but the wallet must still
   // be finalized against that invite before the app is unlocked.
@@ -319,8 +236,6 @@ export default function InviteGate({ children }: InviteGateProps) {
     currentWalletAddress !== null &&
     !hasWalletAccess &&
     !hasPendingInviteAccess &&
-    privyReady &&
-    !hasLegacyPrivyWalletAccess &&
     !isCheckingRegistration &&
     !isFinalizingInvite &&
     lastCheckedWalletAddress === currentWalletAddress;
@@ -657,9 +572,7 @@ export default function InviteGate({ children }: InviteGateProps) {
                               ? "Linking invite to wallet..."
                               : hasPendingInviteAccess
                                 ? "Invite accepted. Connect your wallet to finish access."
-                                : hasLegacyPrivyWalletAccess
-                                  ? "Restoring legacy wallet access..."
-                                  : "Checking wallet access..."}
+                                : "Checking wallet access..."}
                           </span>
                         </div>
 

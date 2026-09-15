@@ -7,7 +7,6 @@ import {
   getAddress,
   http,
   isAddress,
-  maxUint256,
   type Address,
   type Hex,
   type PublicClient,
@@ -607,7 +606,7 @@ export function buildSynthraExactInputTransaction(params: {
 
 export function buildSynthraApprovalTransaction(params: {
   tokenAddress: string;
-  amount?: bigint | string;
+  amount: bigint | string;
   spender?: string;
 }): SynthraTransaction {
   return {
@@ -617,7 +616,7 @@ export function buildSynthraApprovalTransaction(params: {
       functionName: "approve",
       args: [
         normalizeSynthraAddress(params.spender ?? SYNTHRA_ADDRESSES.universalRouter),
-        params.amount == null ? maxUint256 : BigInt(params.amount),
+        BigInt(params.amount),
       ],
     }),
     value: "0x0",
@@ -627,11 +626,10 @@ export function buildSynthraApprovalTransaction(params: {
 
 export function buildSynthraPermit2ApproveTransaction(params: {
   tokenAddress: string;
+  amount: bigint | string;
   spender?: string;
-  amount?: bigint | string;
   expiration?: bigint | number;
 }): SynthraTransaction {
-  const maxUint160 = (1n << 160n) - 1n;
   const maxUint48 = 2 ** 48 - 1;
 
   return {
@@ -642,7 +640,7 @@ export function buildSynthraPermit2ApproveTransaction(params: {
       args: [
         normalizeSynthraAddress(params.tokenAddress),
         normalizeSynthraAddress(params.spender ?? SYNTHRA_ADDRESSES.universalRouter),
-        params.amount == null ? maxUint160 : BigInt(params.amount),
+        BigInt(params.amount),
         params.expiration == null ? maxUint48 : Number(params.expiration),
       ],
     }),

@@ -10,35 +10,38 @@ import { BridgeKit } from "@circle-fin/bridge-kit";
 import { ViemAdapter } from "@circle-fin/adapter-viem-v2";
 import {
   ArcTestnet,
+  Arbitrum,
   ArbitrumSepolia,
+  Avalanche,
   AvalancheFuji,
+  Base,
   BaseSepolia,
+  Ethereum,
   EthereumSepolia,
+  Linea,
   LineaSepolia,
+  Optimism,
   OptimismSepolia,
+  Polygon,
   PolygonAmoy,
+  Sonic,
   SonicTestnet,
+  Unichain,
   UnichainSepolia,
 } from "@circle-fin/bridge-kit/chains";
-import { createPublicClient, createWalletClient, http, Chain as ViemChain } from "viem";
+import { createPublicClient, createWalletClient, http, isAddress, zeroAddress, Chain as ViemChain } from "viem";
+import {
+  BRIDGE_USDC_ADDRESSES,
+  getBridgeNetworkMode,
+} from "@/lib/bridgeNetworks";
+import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
+
 const getSupportedTokens = () => [
   {
     symbol: "USDC",
     name: "USD Coin",
     decimals: 6,
-    chainAddresses: {
-      "arc-testnet": "0x3600000000000000000000000000000000000000",
-      "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
-      "optimism-sepolia": "0x5fd84259d66Cd46123540766Be93DFE6D43130D7",
-      "avalanche-fuji": "0x5425890298aed601595a70ab815c96711a31bc65",
-      "arbitrum-sepolia": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d",
-      "ethereum-sepolia": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
-      "linea-sepolia": "0xfece4462d57bd51a6a552365a011b95f0e16d9b7",
-      "polygon-amoy": "0x41e94eb019c0762f9bfcf9fb1e58725bfb0e7582",
-      "sonic-testnet": "0x0BA304580ee7c9a980CF72e55f5Ed2E9fd30Bc51",
-      "unichain-sepolia": "0x31d0220469e10c4E71834a79b1f276d740d3768F",
-      solana: "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU",
-    } as Record<string, string>,
+    chainAddresses: BRIDGE_USDC_ADDRESSES,
   },
 ];
 
@@ -46,12 +49,22 @@ const getSupportedTokens = () => [
 const RETRYABLE_RPC_STATUS_CODES = new Set([408, 409, 425, 429, 500, 502, 503, 504]);
 
 const DIRECT_RPC_URLS: Record<number, string> = {
+  1: "https://ethereum.publicnode.com",
+  10: "https://mainnet.optimism.io",
+  130: "https://mainnet.unichain.org",
+  137: "https://polygon-rpc.com",
+  146: "https://rpc.soniclabs.com",
+  8453: "https://mainnet.base.org",
+  43114: "https://api.avax.network/ext/bc/C/rpc",
+  42161: "https://arb1.arbitrum.io/rpc",
+  59144: "https://rpc.linea.build",
+  5042: "https://rpc.arc-scan.org",
   5042002: "https://rpc.testnet.arc.network",
   84532: "https://sepolia.base.org",
   11155420: "https://sepolia.optimism.io",
   43113: "https://api.avax-test.network/ext/bc/C/rpc",
   421614: "https://sepolia-rollup.arbitrum.io/rpc",
-  11155111: "https://sepolia.drpc.org",
+  11155111: "https://ethereum-sepolia-rpc.publicnode.com",
   59141: "https://rpc.sepolia.linea.build",
   80002: "https://rpc-amoy.polygon.technology",
   14601: "https://rpc.testnet.soniclabs.com",
@@ -73,6 +86,16 @@ const getBridgeRpcUrls = (chainId: number) => {
 
 // Map chain IDs to chain name keys for token lookup
 const CHAIN_ID_TO_TOKEN_KEY: Record<number, string> = {
+  1: "ethereum",
+  10: "optimism",
+  130: "unichain",
+  137: "polygon",
+  146: "sonic",
+  8453: "base",
+  43114: "avalanche",
+  42161: "arbitrum",
+  59144: "linea",
+  5042: "arc",
   5042002: "arc-testnet",
   84532: "base-sepolia",
   11155420: "optimism-sepolia",
@@ -87,6 +110,16 @@ const CHAIN_ID_TO_TOKEN_KEY: Record<number, string> = {
 
 // Map chain IDs to Circle chain identifiers
 const CHAIN_ID_TO_CIRCLE_CHAIN: Record<number, string> = {
+  1: "Ethereum",
+  10: "Optimism",
+  130: "Unichain",
+  137: "Polygon",
+  146: "Sonic",
+  8453: "Base",
+  43114: "Avalanche",
+  42161: "Arbitrum",
+  59144: "Linea",
+  5042: "Arc",
   5042002: "Arc_Testnet",
   84532: "Base_Sepolia",
   11155420: "Optimism_Sepolia",
@@ -101,6 +134,15 @@ const CHAIN_ID_TO_CIRCLE_CHAIN: Record<number, string> = {
 
 // Map Circle's chain definitions to their actual viem Chain objects
 const CIRCLE_CHAIN_OBJECTS = {
+  Ethereum,
+  Optimism,
+  Unichain,
+  Polygon,
+  Sonic,
+  Base,
+  Avalanche,
+  Arbitrum,
+  Linea,
   Arc_Testnet: ArcTestnet,
   Base_Sepolia: BaseSepolia,
   Optimism_Sepolia: OptimismSepolia,
@@ -112,6 +154,9 @@ const CIRCLE_CHAIN_OBJECTS = {
   Sonic_Testnet: SonicTestnet,
   Unichain_Sepolia: UnichainSepolia,
 } as const;
+
+const isUsableEvmRecipient = (address: string) =>
+  isAddress(address) && address.toLowerCase() !== zeroAddress.toLowerCase();
 
 export interface BridgeRequestBody {
   fromChainId: number;
@@ -206,6 +251,62 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         {
           success: false,
           error: "Missing required fields: fromChainId, toChainId, amount, token, recipientAddress",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!isPositiveDecimalAmount(body.amount)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Amount must be a positive number",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!isUsableEvmRecipient(body.recipientAddress)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid recipient address",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (body.senderAddress && !isUsableEvmRecipient(body.senderAddress)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Invalid sender address",
+        },
+        { status: 400 }
+      );
+    }
+
+    const fromTokenKey = CHAIN_ID_TO_TOKEN_KEY[body.fromChainId];
+    const toTokenKey = CHAIN_ID_TO_TOKEN_KEY[body.toChainId];
+    const fromMode = getBridgeNetworkMode(fromTokenKey);
+    const toMode = getBridgeNetworkMode(toTokenKey);
+
+    if (!fromTokenKey || !toTokenKey || !fromMode || fromMode !== toMode) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Unsupported chain. From: ${body.fromChainId}, To: ${body.toChainId}`,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (body.fromChainId === 5042 || body.toChainId === 5042) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.",
         },
         { status: 400 }
       );

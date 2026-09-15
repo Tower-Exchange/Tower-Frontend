@@ -67,7 +67,11 @@ export function withDevApiAuth(
       });
 
       return NextResponse.json(
-        { success: false, error: authResult.error || "Unauthorized" },
+        {
+          success: false,
+          error: authResult.error || "Unauthorized",
+          code: "UNAUTHORIZED",
+        },
         { status: responseStatus, headers: CORS_HEADERS }
       );
     }
@@ -92,7 +96,11 @@ export function withDevApiAuth(
       });
 
       return NextResponse.json(
-        { success: false, error: scopeResult.error || "Forbidden" },
+        {
+          success: false,
+          error: scopeResult.error || "Forbidden",
+          code: "FORBIDDEN",
+        },
         { status: responseStatus, headers: CORS_HEADERS }
       );
     }
@@ -128,6 +136,7 @@ export function withDevApiAuth(
           error:
             rateLimitDecision.reason ||
             "Rate limit exceeded. Please slow down.",
+          code: "RATE_LIMITED",
         },
         {
           status: responseStatus,
@@ -147,7 +156,11 @@ export function withDevApiAuth(
     } catch (err: any) {
       console.error(`Error executing dev API endpoint [${endpointPath}]:`, err);
       response = NextResponse.json(
-        { success: false, error: err.message || "Internal server error" },
+        {
+          success: false,
+          error: err.message || "Internal server error",
+          code: "INTERNAL_ERROR",
+        },
         { status: 500 }
       );
     }

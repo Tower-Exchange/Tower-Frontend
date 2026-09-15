@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 
 const COINGECKO_PRICE_URL =
   "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin,eurc,tether&vs_currencies=usd";
 
-export async function GET() {
+export async function getPricesResponse() {
   try {
     const response = await fetch(COINGECKO_PRICE_URL, {
       headers: {
@@ -34,3 +35,7 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withFrontendOriginGate(async (_request: NextRequest) =>
+  getPricesResponse(),
+);

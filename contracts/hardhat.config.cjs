@@ -1,5 +1,7 @@
 require("@nomicfoundation/hardhat-toolbox");
 require("dotenv/config");
+const { HttpProvider } = require("hardhat/internal/core/providers/http");
+require("./scripts/lib/patchArcscanRpc.cjs").patchArcscanRpcProvider(HttpProvider);
 
 const config = {
   solidity: {
@@ -19,6 +21,17 @@ const config = {
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 5042002,
       timeout: 60000,
+    },
+    // Arc Mainnet. Public RPC: https://rpc.arc-scan.org (docs:
+    // https://docs.arc-scan.org/docs/rpc). It forwards eth_sendRawTransaction
+    // and fails over across providers; when none answer it returns -32603
+    // unreachable. The HttpProvider patch retries those. Prefer a keyed URL
+    // via ARC_MAINNET_RPC_URL when you have one.
+    "arc-mainnet": {
+      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.arc-scan.org",
+      accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
+      chainId: 5042,
+      timeout: 180000,
     },
     // Base Sepolia
     "base-sepolia": {
@@ -93,6 +106,7 @@ const config = {
   etherscan: {
     apiKey: {
       "arc-testnet": "empty",
+      "arc-mainnet": process.env.ARCSCAN_API_KEY || "empty",
       "base-sepolia": process.env.BASESCAN_API_KEY || "empty",
       "optimism-sepolia": process.env.OPTIMISMSCAN_API_KEY || "empty",
       "avalanche-fuji": process.env.SNOWTRACE_API_KEY || "empty",
@@ -110,6 +124,14 @@ const config = {
         urls: {
           apiURL: "https://testnet.arcscan.app/api",
           browserURL: "https://testnet.arcscan.app"
+        }
+      },
+      {
+        network: "arc-mainnet",
+        chainId: 5042,
+        urls: {
+          apiURL: "https://api.arc-scan.org/api",
+          browserURL: "https://arc-scan.org"
         }
       },
       {
@@ -177,6 +199,9 @@ const config = {
         }
       }
     ]
+  },
+  sourcify: {
+    enabled: false,
   },
   paths: {
     sources: "./contracts",

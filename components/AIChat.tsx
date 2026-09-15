@@ -22,6 +22,7 @@ import { useSwapExecution } from "@/lib/useSwapExecution";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
 import useBridge from "@/lib/hooks/useBridge";
 import { SUPPORTED_CHAINS, getBridgeFees } from "@/lib/bridgeService";
+import { getBridgeTransactionUrl, isSolanaBridgeChain } from "@/lib/bridgeNetworks";
 import { TransactionConfirmation } from "./TransactionConfirmation";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
@@ -227,20 +228,6 @@ const logAiSwapActivity = async ({
     console.error("Error logging AI swap activity:", activityError);
     return null;
   }
-};
-
-const BRIDGE_EXPLORER_URLS: Record<string, string> = {
-  "arc-testnet": "https://testnet.arcscan.app/tx/",
-  "base-sepolia": "https://sepolia.basescan.org/tx/",
-  "optimism-sepolia": "https://sepolia-optimism.etherscan.io/tx/",
-  "avalanche-fuji": "https://testnet.snowtrace.io/tx/",
-  "arbitrum-sepolia": "https://sepolia.arbiscan.io/tx/",
-  "ethereum-sepolia": "https://sepolia.etherscan.io/tx/",
-  "linea-sepolia": "https://sepolia.lineascan.build/tx/",
-  "polygon-amoy": "https://amoy.polygonscan.com/tx/",
-  "sonic-testnet": "https://testnet.sonicscan.org/tx/",
-  "unichain-sepolia": "https://unichain-sepolia.blockscout.com/tx/",
-  solana: "https://explorer.solana.com/tx/",
 };
 
 const getBridgeChainName = (chainId?: string) => {
@@ -992,8 +979,8 @@ export const AIChat = () => {
 
       if (response.data?.bridge_execution?.request) {
         const bridgeRequest = response.data.bridge_execution.request;
-        const isSolanaSourceChain = bridgeRequest.fromChain === "solana";
-        const isSolanaDestinationChain = bridgeRequest.toChain === "solana";
+        const isSolanaSourceChain = isSolanaBridgeChain(bridgeRequest.fromChain);
+        const isSolanaDestinationChain = isSolanaBridgeChain(bridgeRequest.toChain);
         const sourceAddress =
           bridgeRequest.sourceAddress ||
           (isSolanaSourceChain ? solanaAddress || "" : walletAddress);
@@ -1032,7 +1019,7 @@ export const AIChat = () => {
             );
           } else {
             try {
-              if (bridgeRequest.toChain === "solana" && !toAddress) {
+              if (isSolanaBridgeChain(bridgeRequest.toChain) && !toAddress) {
                 setShowBridgeConfirmation(false);
                 setActiveBridgeRequest(null);
                 pushAssistantMessage(
@@ -1069,7 +1056,7 @@ export const AIChat = () => {
                     bridgeRequest.toChain as keyof typeof SUPPORTED_CHAINS
                   ];
                 const bridgeFeeRecipientAddress = bridgeFeeQuote.customFeeEnabled
-                  ? bridgeRequest.fromChain === "solana"
+                  ? isSolanaBridgeChain(bridgeRequest.fromChain)
                     ? process.env.NEXT_PUBLIC_BRIDGE_FEE_RECIPIENT_SOLANA?.trim() ||
                       null
                     : process.env.NEXT_PUBLIC_BRIDGE_FEE_RECIPIENT_EVM?.trim() ||
@@ -1276,13 +1263,10 @@ export const AIChat = () => {
       : activeBridgeRequest.fromChain
     : null;
   const bridgeExplorerUrl =
-    bridgeHook.transactionHash &&
-    bridgeExplorerChain &&
-    BRIDGE_EXPLORER_URLS[bridgeExplorerChain]
-      ? bridgeExplorerChain === "solana"
-        ? `${BRIDGE_EXPLORER_URLS[bridgeExplorerChain]}${bridgeHook.transactionHash}?cluster=devnet`
-        : `${BRIDGE_EXPLORER_URLS[bridgeExplorerChain]}${bridgeHook.transactionHash}`
-      : undefined;
+    getBridgeTransactionUrl(
+      bridgeExplorerChain,
+      bridgeHook.transactionHash,
+    ) ?? undefined;
   const bridgeStatusMessage = bridgeHook.isBridging
     ? "Follow the wallet prompts to submit the bridge transaction."
     : bridgeHook.message ||

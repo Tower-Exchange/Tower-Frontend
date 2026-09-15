@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getSynthraDexInfo } from '@/lib/synthraDex';
 import {
   getTowerDexInfo,
@@ -8,6 +8,7 @@ import {
 } from "@/lib/towerDex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 
 type DexInfo = {
   id: string;
@@ -137,7 +138,7 @@ const getVisibleDexes = (dexes: DexInfo[]) => {
  * GET /api/swap/dexes
  * Returns list of available DEX routers for swap operations
  */
-export async function GET() {
+export async function getSwapDexesResponse() {
   try {
     const synthraDex = getCanonicalSynthraDex();
     const unitFlowDex = getCanonicalUnitFlowDex();
@@ -208,3 +209,7 @@ export async function GET() {
     });
   }
 }
+
+export const GET = withFrontendOriginGate(async (_request: NextRequest) =>
+  getSwapDexesResponse(),
+);

@@ -414,7 +414,7 @@ const isRecoverableArcGasEstimationError = (message: string) => {
  * Sign and send a transaction using the connected browser wallet
  * This uses the active injected provider exposed at window.ethereum
  */
-export const signTransactionWithPrivy = async (
+export const signTransactionWithWallet = async (
   transaction: TransactionData,
   walletAddress: string
 ): Promise<SignTransactionResult> => {
@@ -709,7 +709,7 @@ export const executeSwapFlow = async (
       onStatusChange("signing", {
         message: `Requesting ${approvalLabel}...`,
       });
-      const approvalSignResult = await signTransactionWithPrivy(
+      const approvalSignResult = await signTransactionWithWallet(
         approvalTransaction,
         walletAddress,
       );
@@ -736,7 +736,7 @@ export const executeSwapFlow = async (
 
     // Step 1: Sign transaction
     onStatusChange("signing", { message: "Requesting wallet signature..." });
-    const signResult = await signTransactionWithPrivy(transaction, walletAddress);
+    const signResult = await signTransactionWithWallet(transaction, walletAddress);
 
     // Step 2: Broadcast transaction (may be skipped if already broadcasted by wallet)
     onStatusChange("broadcasting", {

@@ -1,8 +1,9 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 
 export const dynamic = "force-dynamic";
 
-export async function POST() {
+export const POST = withFrontendOriginGate(async (_request: NextRequest) => {
   return NextResponse.json(
     {
       success: false,
@@ -12,4 +13,4 @@ export async function POST() {
     },
     { status: 410 },
   );
-}
+});

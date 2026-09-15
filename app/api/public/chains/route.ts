@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { withDevApiAuth, handleCorsPreflight } from "@/lib/server/devApiMiddleware";
-import { GET as internalChainsGet } from "@/app/api/chains/route";
+import { getChainsResponse } from "@/app/api/chains/route";
 
 export const OPTIONS = handleCorsPreflight;
 
@@ -8,7 +8,7 @@ export const GET = withDevApiAuth(
   "/api/public/chains",
   { requiredScope: null, computeUnits: 1 },
   async () => {
-    return internalChainsGet();
+    return getChainsResponse();
   }
 );
 

@@ -34,6 +34,29 @@ export const ARC_ADD_NETWORK_PARAMS = [
   },
 ];
 
+export const ARC_MAINNET_CONFIG = {
+  chainId: 5042,
+  rpcUrl: "https://rpc.arc-scan.org",
+  currency: "USDC",
+  decimals: 18,
+  explorerUrl: "https://arc-scan.org",
+};
+
+export const ARC_MAINNET_CHAIN_HEX = "0x13b2"; // 5042 in hex
+export const ARC_MAINNET_ADD_NETWORK_PARAMS = [
+  {
+    chainId: ARC_MAINNET_CHAIN_HEX,
+    chainName: "Arc",
+    nativeCurrency: {
+      name: "USDC",
+      symbol: "USDC",
+      decimals: 18,
+    },
+    rpcUrls: ["https://rpc.arc-scan.org"],
+    blockExplorerUrls: ["https://arc-scan.org"],
+  },
+];
+
 // QuantumExchange API Configuration
 export const QUANTUM_EXCHANGE_CONFIG = {
   baseUrl: "https://www.quantumexchange.app/api/v1",

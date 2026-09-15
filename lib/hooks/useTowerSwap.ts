@@ -7,6 +7,18 @@ export interface SwapQuote {
   swapInputAmount?: string; // Net amount after Tower platform fee, normalized to 18 decimals
   outputAmount: string;
   minOut: string;
+  inputTokenDecimals?: number;
+  outputTokenDecimals?: number;
+  amountScale?: string;
+  requestAmountUnit?: string;
+  inputAmountRaw?: string;
+  swapInputAmountRaw?: string;
+  outputAmountRaw?: string;
+  minOutRaw?: string;
+  platformFeeAmountRaw?: string;
+  quotedAt?: string;
+  expiresAt?: string;
+  validForSeconds?: number;
   priceImpact: string | number;
   gasEstimate?: string;
   slippage?: number; // in basis points
@@ -76,6 +88,9 @@ export interface ApprovalTransaction {
   gasLimit: string;
   value?: string;
   label?: string;
+  token?: string;
+  spender?: string;
+  amountRaw?: string;
 }
 
 interface UseTowerSwapOptions {

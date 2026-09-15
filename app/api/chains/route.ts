@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 
 const SUPPORTED_CHAINS = [
   {
@@ -63,7 +64,7 @@ const SUPPORTED_CHAINS = [
     key: "ethereum-sepolia",
     type: "evm",
     nativeCurrency: { name: "Sepolia Ether", symbol: "ETH", decimals: 18 },
-    rpcUrl: "https://sepolia.drpc.org",
+    rpcUrl: "https://ethereum-sepolia-rpc.publicnode.com",
     explorerUrl: "https://sepolia.etherscan.io",
     supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
   },
@@ -122,11 +123,136 @@ const SUPPORTED_CHAINS = [
     explorerUrl: "https://explorer.solana.com/?cluster=devnet",
     supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
   },
+  {
+    chainId: "5042",
+    numericId: 5042,
+    name: "Arc",
+    key: "arc",
+    type: "evm",
+    nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
+    rpcUrl: "https://rpc.arc-scan.org",
+    explorerUrl: "https://arc-scan.org",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "1",
+    numericId: 1,
+    name: "Ethereum",
+    key: "ethereum",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://ethereum.publicnode.com",
+    explorerUrl: "https://etherscan.io",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "8453",
+    numericId: 8453,
+    name: "Base",
+    key: "base",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://mainnet.base.org",
+    explorerUrl: "https://basescan.org",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "10",
+    numericId: 10,
+    name: "Optimism",
+    key: "optimism",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://mainnet.optimism.io",
+    explorerUrl: "https://optimistic.etherscan.io",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "42161",
+    numericId: 42161,
+    name: "Arbitrum",
+    key: "arbitrum",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://arb1.arbitrum.io/rpc",
+    explorerUrl: "https://arbiscan.io",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "137",
+    numericId: 137,
+    name: "Polygon",
+    key: "polygon",
+    type: "evm",
+    nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
+    rpcUrl: "https://polygon-rpc.com",
+    explorerUrl: "https://polygonscan.com",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "43114",
+    numericId: 43114,
+    name: "Avalanche",
+    key: "avalanche",
+    type: "evm",
+    nativeCurrency: { name: "Avalanche", symbol: "AVAX", decimals: 18 },
+    rpcUrl: "https://api.avax.network/ext/bc/C/rpc",
+    explorerUrl: "https://snowtrace.io",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "59144",
+    numericId: 59144,
+    name: "Linea",
+    key: "linea",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://rpc.linea.build",
+    explorerUrl: "https://lineascan.build",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "146",
+    numericId: 146,
+    name: "Sonic",
+    key: "sonic",
+    type: "evm",
+    nativeCurrency: { name: "Sonic", symbol: "S", decimals: 18 },
+    rpcUrl: "https://rpc.soniclabs.com",
+    explorerUrl: "https://sonicscan.org",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "130",
+    numericId: 130,
+    name: "Unichain",
+    key: "unichain",
+    type: "evm",
+    nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+    rpcUrl: "https://mainnet.unichain.org",
+    explorerUrl: "https://uniscan.xyz",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
+  {
+    chainId: "solana-mainnet",
+    numericId: null,
+    name: "Solana",
+    key: "solana-mainnet",
+    type: "solana",
+    nativeCurrency: { name: "SOL", symbol: "SOL", decimals: 9 },
+    rpcUrl: "https://api.mainnet-beta.solana.com",
+    explorerUrl: "https://explorer.solana.com",
+    supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
+  },
 ];
 
-export async function GET() {
+export async function getChainsResponse() {
   return NextResponse.json({
     success: true,
     data: SUPPORTED_CHAINS,
   });
 }
+
+export const GET = withFrontendOriginGate(async (_request: NextRequest) =>
+  getChainsResponse(),
+);

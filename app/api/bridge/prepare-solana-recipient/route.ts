@@ -11,27 +11,40 @@ import {
 
 import {
   getSolanaUsdcAssociatedTokenAddress,
+  getSolanaUsdcMint,
   isValidSolanaAddress,
   normalizeSolanaAddress,
-  SOLANA_DEVNET_USDC_MINT,
 } from "@/lib/solanaUsdcAccounts";
+import { isSolanaMainnetChain } from "@/lib/bridgeNetworks";
 
 export const dynamic = "force-dynamic";
 
 const SOLANA_COMMITMENT = "confirmed" as const;
 const SOLANA_DEFAULT_RPC_URL = "https://api.devnet.solana.com";
+const SOLANA_MAINNET_DEFAULT_RPC_URL = "https://api.mainnet-beta.solana.com";
 const BASE58_ALPHABET =
   "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const BASE58_ALPHABET_MAP = new Map(
   [...BASE58_ALPHABET].map((char, index) => [char, index]),
 );
 
-const getSolanaRpcUrl = () =>
-  process.env.SOLANA_DEVNET_RPC_URL ||
-  process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL ||
-  process.env.SOLANA_RPC_URL ||
-  process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
-  SOLANA_DEFAULT_RPC_URL;
+const getSolanaRpcUrl = (chainId: string) => {
+  if (isSolanaMainnetChain(chainId)) {
+    return (
+      process.env.SOLANA_MAINNET_RPC_URL ||
+      process.env.NEXT_PUBLIC_SOLANA_MAINNET_RPC_URL ||
+      SOLANA_MAINNET_DEFAULT_RPC_URL
+    );
+  }
+
+  return (
+    process.env.SOLANA_DEVNET_RPC_URL ||
+    process.env.NEXT_PUBLIC_SOLANA_DEVNET_RPC_URL ||
+    process.env.SOLANA_RPC_URL ||
+    process.env.NEXT_PUBLIC_SOLANA_RPC_URL ||
+    SOLANA_DEFAULT_RPC_URL
+  );
+};
 
 const decodeBase58 = (value: string) => {
   if (!/^[1-9A-HJ-NP-Za-km-z]+$/.test(value)) {
@@ -143,17 +156,23 @@ const getSponsorKeypair = () => {
   }
 };
 
-const getConnection = () =>
-  new Connection(getSolanaRpcUrl(), {
+const getConnection = (chainId: string) =>
+  new Connection(getSolanaRpcUrl(chainId), {
     commitment: SOLANA_COMMITMENT,
     confirmTransactionInitialTimeout: 120000,
     disableRetryOnRateLimit: false,
   });
 
-const ensureRecipientUsdcAccount = async (ownerAddress: string) => {
+const ensureRecipientUsdcAccount = async (
+  ownerAddress: string,
+  chainId: string,
+) => {
   const normalizedOwnerAddress = normalizeSolanaAddress(ownerAddress);
-  const ataAddress = getSolanaUsdcAssociatedTokenAddress(normalizedOwnerAddress);
-  const connection = getConnection();
+  const ataAddress = getSolanaUsdcAssociatedTokenAddress(
+    normalizedOwnerAddress,
+    chainId,
+  );
+  const connection = getConnection(chainId);
   const ataPublicKey = new PublicKey(ataAddress);
 
   const existingAccount = await connection.getAccountInfo(
@@ -179,7 +198,7 @@ const ensureRecipientUsdcAccount = async (ownerAddress: string) => {
   }
 
   const ownerPublicKey = new PublicKey(normalizedOwnerAddress);
-  const mintPublicKey = new PublicKey(SOLANA_DEVNET_USDC_MINT);
+  const mintPublicKey = new PublicKey(getSolanaUsdcMint(chainId));
 
   const transaction = new Transaction().add(
     createAssociatedTokenAccountIdempotentInstruction(
@@ -234,9 +253,16 @@ const ensureRecipientUsdcAccount = async (ownerAddress: string) => {
 
 export async function POST(request: NextRequest) {
   try {
-    const { walletAddress } = (await request.json().catch(() => ({}))) as {
+    const { walletAddress, chainId: requestedChainId } = (await request
+      .json()
+      .catch(() => ({}))) as {
       walletAddress?: string;
+      chainId?: string;
     };
+
+    const chainId = isSolanaMainnetChain(requestedChainId)
+      ? "solana-mainnet"
+      : "solana";
 
     const normalizedWalletAddress =
       typeof walletAddress === "string"
@@ -252,6 +278,7 @@ export async function POST(request: NextRequest) {
 
     const preparedRecipient = await ensureRecipientUsdcAccount(
       normalizedWalletAddress,
+      chainId,
     );
 
     return NextResponse.json({

@@ -1,23 +1,23 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useCallback } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { X, Search, ChevronDown, Check } from "lucide-react";
 import Image, { type StaticImageData } from "next/image";
 import { getSupportedTokens, type SupportedToken } from "@/lib/bridgeService";
-import globeLogo from "@/public/assets/globe-removebg-preview.svg";
-import arcTestnetLogo from "@/public/assets/ARCSvg.svg";
-import solanaLogo from "@/public/assets/solana.svg";
-import baseSepoliaLogo from "@/public/assets/Base Sepolia logo.svg";
-import optimismSepoliaLogo from "@/public/assets/Optimism Sepolia logo.svg";
-import avalancheFujiLogo from "@/public/assets/Avalanche Fuji logo.svg";
-import arbitrumSepoliaLogo from "@/public/assets/Arbitrum Sepolia logo (2).svg";
-import ethereumSepoliaLogo from "@/public/assets/EthLogo.svg";
-import lineaSepoliaLogo from "@/public/assets/Linea-Token_Round.svg";
-import polygonAmoyLogo from "@/public/assets/polygon.svg";
-import sonicTestnetLogo from "@/public/assets/S_token.svg";
-import unichainSepoliaLogo from "@/public/assets/Mainnet.svg";
+import {
+  type BridgeNetworkMode,
+  DEFAULT_BRIDGE_CHAIN,
+  getBridgeNetworkMode,
+  inferBridgeNetworkMode,
+  parseBridgeNetworkMode,
+  readStoredBridgeNetworkMode,
+  remapChainForNetwork,
+  storeBridgeNetworkMode,
+} from "@/lib/bridgeNetworks";
+import { getBridgeSelectChains } from "@/lib/bridgeChainUi";
+import BridgeNetworkTabs from "@/components/BridgeNetworkTabs";
 
 type Chain = {
   id: string;
@@ -27,87 +27,32 @@ type Chain = {
   logo?: StaticImageData | string;
 };
 
-const CHAINS: Chain[] = [
-  {
-    id: "all",
-    name: "All Chains",
-    color: "#4B5563",
-    logo: globeLogo,
-  },
-  {
-    id: "arc-testnet",
-    name: "Arc Testnet",
-    color: "#00AEEF",
-    logo: arcTestnetLogo,
-  },
-  {
-    id: "solana",
-    name: "Solana Devnet",
-    color: "#14F195",
-    logo: solanaLogo,
-  },
-  {
-    id: "base-sepolia",
-    name: "Base Sepolia",
-    color: "#0174F0",
-    logo: baseSepoliaLogo,
-  },
-  {
-    id: "optimism-sepolia",
-    name: "Optimism Sepolia",
-    color: "#FF0420",
-    logo: optimismSepoliaLogo,
-  },
-  {
-    id: "avalanche-fuji",
-    name: "Avalanche Fuji",
-    color: "#E84142",
-    logo: avalancheFujiLogo,
-  },
-  {
-    id: "arbitrum-sepolia",
-    name: "Arbitrum Sepolia",
-    color: "#2D374B",
-    logo: arbitrumSepoliaLogo,
-  },
-  {
-    id: "ethereum-sepolia",
-    name: "Ethereum Sepolia",
-    color: "#627EEA",
-    logo: ethereumSepoliaLogo,
-  },
-  {
-    id: "linea-sepolia",
-    name: "Linea Sepolia",
-    color: "#121212",
-    logo: lineaSepoliaLogo,
-  },
-  {
-    id: "polygon-amoy",
-    name: "Polygon Amoy",
-    color: "#8247E5",
-    logo: polygonAmoyLogo,
-  },
-  {
-    id: "sonic-testnet",
-    name: "Sonic Testnet",
-    color: "#00D4AA",
-    logo: sonicTestnetLogo,
-  },
-  {
-    id: "unichain-sepolia",
-    name: "Unichain Sepolia",
-    color: "#FF007A",
-    logo: unichainSepoliaLogo,
-  },
-];
+const getInitialNetworkMode = (
+  searchParams: URLSearchParams,
+): BridgeNetworkMode =>
+  inferBridgeNetworkMode(
+    searchParams.get("fromChain"),
+    searchParams.get("toChain"),
+  ) ||
+  parseBridgeNetworkMode(searchParams.get("network")) ||
+  readStoredBridgeNetworkMode();
 
 export default function BridgeSelectContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const side = searchParams.get("side") === "to" ? "to" : "from";
   const oppositeSide = side === "to" ? "from" : "to";
-  const oppositeChainId = searchParams.get(`${oppositeSide}Chain`);
+  const [networkMode, setNetworkMode] = useState<BridgeNetworkMode>(() =>
+    getInitialNetworkMode(searchParams),
+  );
+  const chains = useMemo(
+    () => getBridgeSelectChains(networkMode) as Chain[],
+    [networkMode],
+  );
+  const oppositeChainId = remapChainForNetwork(
+    searchParams.get(`${oppositeSide}Chain`),
+    networkMode,
+  );
   const oppositeTokenSymbol = searchParams.get(`${oppositeSide}Token`);
   const oppositeSelectionLabel = side === "to" ? "source" : "destination";
 
@@ -116,20 +61,76 @@ export default function BridgeSelectContent() {
   const [tokens, setTokens] = useState<SupportedToken[]>([]);
   const [selectedChainId, setSelectedChainId] = useState<string>(() => {
     const currentChainId = searchParams.get(`${side}Chain`);
-    if (currentChainId && CHAINS.some((chain) => chain.id === currentChainId)) {
-      return currentChainId;
+    const mode = getInitialNetworkMode(searchParams);
+    const remapped = remapChainForNetwork(currentChainId, mode);
+    if (remapped && remapped !== "all") {
+      return remapped;
     }
-    return "arc-testnet";
+    return DEFAULT_BRIDGE_CHAIN[mode];
   });
   const [isChainModalOpen, setIsChainModalOpen] = useState(false);
+
+  const handleNetworkModeChange = useCallback(
+    (mode: BridgeNetworkMode) => {
+      storeBridgeNetworkMode(mode);
+      setNetworkMode(mode);
+      const nextSelected =
+        selectedChainId === "all"
+          ? selectedChainId
+          : remapChainForNetwork(selectedChainId, mode) ||
+            DEFAULT_BRIDGE_CHAIN[mode];
+      setSelectedChainId(nextSelected);
+
+      const current = new URLSearchParams(Array.from(searchParams.entries()));
+      current.set("network", mode);
+      if (nextSelected && nextSelected !== "all") {
+        current.set(`${side}Chain`, nextSelected);
+      }
+      const remappedOpposite = remapChainForNetwork(
+        searchParams.get(`${oppositeSide}Chain`),
+        mode,
+      );
+      if (
+        remappedOpposite &&
+        remappedOpposite !== "all" &&
+        remappedOpposite !== nextSelected
+      ) {
+        current.set(`${oppositeSide}Chain`, remappedOpposite);
+      } else if (
+        remappedOpposite &&
+        remappedOpposite !== "all" &&
+        remappedOpposite === nextSelected
+      ) {
+        current.delete(`${oppositeSide}Chain`);
+      }
+      router.replace(`/bridge/select?${current.toString()}`);
+    },
+    [oppositeSide, router, searchParams, selectedChainId, side],
+  );
 
   // Fetch supported tokens for the selected chain
   useEffect(() => {
     const fetchTokens = async () => {
       try {
         const supportedTokens = getSupportedTokens(
-          selectedChainId === "all" ? undefined : selectedChainId
+          selectedChainId === "all" ? undefined : selectedChainId,
         );
+        if (selectedChainId === "all") {
+          setTokens(
+            supportedTokens.map((token) => ({
+              ...token,
+              chains: token.chains.filter(
+                (chainId) => getBridgeNetworkMode(chainId) === networkMode,
+              ),
+              chainAddresses: Object.fromEntries(
+                Object.entries(token.chainAddresses).filter(
+                  ([chainId]) => getBridgeNetworkMode(chainId) === networkMode,
+                ),
+              ),
+            })),
+          );
+          return;
+        }
         setTokens(supportedTokens);
       } catch (error) {
         console.error("Failed to fetch tokens:", error);
@@ -138,7 +139,7 @@ export default function BridgeSelectContent() {
     };
 
     fetchTokens();
-  }, [selectedChainId]);
+  }, [networkMode, selectedChainId]);
 
   const title = useMemo(
     () => (side === "to" ? "Exchange to" : "Exchange from"),
@@ -147,15 +148,15 @@ export default function BridgeSelectContent() {
 
   const visibleChains = useMemo(() => {
     const query = chainSearch.toLowerCase().trim();
-    if (!query) return CHAINS;
-    return CHAINS.filter((chain) =>
+    if (!query) return chains;
+    return chains.filter((chain) =>
       chain.name.toLowerCase().includes(query)
     );
-  }, [chainSearch]);
+  }, [chainSearch, chains]);
 
   const selectedChain = useMemo(() => {
-    return CHAINS.find((chain) => chain.id === selectedChainId) ?? CHAINS[1];
-  }, [selectedChainId]);
+    return chains.find((chain) => chain.id === selectedChainId) ?? chains[1];
+  }, [chains, selectedChainId]);
 
   const filteredTokens = useMemo(() => {
     const q = tokenSearch.toLowerCase().trim();
@@ -190,7 +191,11 @@ export default function BridgeSelectContent() {
       >
         {/* Left: chain list */}
         <aside className="hidden md:flex w-64 flex-col border-r border-border/70 bg-[#101113] h-screen max-h-screen">
-          <div className="px-4 py-4 border-b border-border/60">
+          <div className="px-4 py-4 border-b border-border/60 space-y-3">
+            <BridgeNetworkTabs
+              mode={networkMode}
+              onChange={handleNetworkModeChange}
+            />
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
                 <Search className="h-4 w-4" />
@@ -300,7 +305,11 @@ export default function BridgeSelectContent() {
           </header>
 
           {/* Mobile chain selector */}
-          <div className="md:hidden px-5 py-3 border-b border-border/60">
+          <div className="md:hidden px-5 py-3 border-b border-border/60 space-y-3">
+            <BridgeNetworkTabs
+              mode={networkMode}
+              onChange={handleNetworkModeChange}
+            />
             <button
               type="button"
               onClick={() => setIsChainModalOpen(true)}
@@ -377,8 +386,12 @@ export default function BridgeSelectContent() {
                         Array.from(searchParams.entries())
                       );
                       current.set(`${side}Token`, token.symbol);
+                      current.set("network", networkMode);
                       if (selectedChainId) {
                         current.set(`${side}Chain`, selectedChainId);
+                      }
+                      if (oppositeChainId) {
+                        current.set(`${oppositeSide}Chain`, oppositeChainId);
                       }
                       router.push(`/bridge?${current.toString()}`);
                     }}

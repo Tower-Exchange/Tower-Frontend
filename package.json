@@ -13,7 +13,8 @@
     "lint": "eslint",
     "generate:invite-codes": "node scripts/generate-invite-codes.mjs",
     "withdraw:fees": "node scripts/withdraw-fees-to-treasury.mjs",
-    "drain:fee-collector": "node scripts/split-fees-in-place-drain.mjs"
+    "drain:fee-collector": "node scripts/split-fees-in-place-drain.mjs",
+    "verify:arc-mainnet": "npm run verify:arc-mainnet --prefix contracts && npm run verify:arc-mainnet --prefix Tower-AMM"
   },
   "dependencies": {
     "@circle-fin/adapter-solana": "^1.6.2",
@@ -23,7 +24,6 @@
     "@circle-fin/bridge-kit": "^1.12.0",
     "@dynamic-labs/ethereum": "^4.77.3",
     "@dynamic-labs/sdk-react-core": "^4.77.3",
-    "@privy-io/react-auth": "^3.13.1",
     "@radix-ui/react-slot": "^1.2.4",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@solana/kit": "^5.5.1",

@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 
 const SUPPORTED_TOKENS = [
   {
@@ -89,9 +90,13 @@ const SUPPORTED_TOKENS = [
   },
 ];
 
-export async function GET() {
+export async function getTokensResponse() {
   return NextResponse.json({
     success: true,
     data: SUPPORTED_TOKENS,
   });
 }
+
+export const GET = withFrontendOriginGate(async (_request: NextRequest) =>
+  getTokensResponse(),
+);

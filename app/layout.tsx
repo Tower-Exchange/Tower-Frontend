@@ -7,7 +7,6 @@ import Footer from "@/components/Footer";
 import InviteGate from "@/components/InviteGate";
 import ThemeScript from "@/components/ThemeScript";
 import { ThemeProvider } from "@/components/providers/ThemeProvider";
-import { PrivyProvider } from "@/components/providers/PrivyProvider";
 import { CustomRainbowKitProvider } from "@/components/providers/RainbowKitProvider";
 import { SolanaWalletProvider } from "@/components/providers/SolanaWalletProvider";
 const INVITE_GATE_ENABLED = process.env.NEXT_PUBLIC_INVITE_GATE_ENABLED === "true";
@@ -71,9 +70,7 @@ export default function RootLayout({
         <ThemeProvider>
           <CustomRainbowKitProvider>
             <SolanaWalletProvider>
-              <PrivyProvider>
-                {INVITE_GATE_ENABLED ? <InviteGate>{appShell}</InviteGate> : appShell}
-              </PrivyProvider>
+              {INVITE_GATE_ENABLED ? <InviteGate>{appShell}</InviteGate> : appShell}
             </SolanaWalletProvider>
           </CustomRainbowKitProvider>
         </ThemeProvider>

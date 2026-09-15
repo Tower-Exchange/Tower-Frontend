@@ -6,7 +6,6 @@ import {
   getAddress,
   http,
   isAddress,
-  maxUint256,
   type Address,
   type Hex,
   type PublicClient,
@@ -392,7 +391,7 @@ export function buildUnitFlowExactInputTransaction(params: {
 
 export function buildUnitFlowApprovalTransaction(params: {
   tokenAddress: string;
-  amount?: bigint | string;
+  amount: bigint | string;
   spender?: string;
 }): UnitFlowTransaction {
   return {
@@ -402,7 +401,7 @@ export function buildUnitFlowApprovalTransaction(params: {
       functionName: "approve",
       args: [
         normalizeUnitFlowAddress(params.spender ?? UNITFLOW_ADDRESSES.universalRouter),
-        params.amount == null ? maxUint256 : BigInt(params.amount),
+        BigInt(params.amount),
       ],
     }),
     value: "0x0",
@@ -412,11 +411,10 @@ export function buildUnitFlowApprovalTransaction(params: {
 
 export function buildUnitFlowPermit2ApproveTransaction(params: {
   tokenAddress: string;
+  amount: bigint | string;
   spender?: string;
-  amount?: bigint | string;
   expiration?: bigint | number;
 }): UnitFlowTransaction {
-  const maxUint160 = (1n << 160n) - 1n;
   const maxUint48 = 2 ** 48 - 1;
 
   return {
@@ -427,7 +425,7 @@ export function buildUnitFlowPermit2ApproveTransaction(params: {
       args: [
         normalizeUnitFlowAddress(params.tokenAddress),
         normalizeUnitFlowAddress(params.spender ?? UNITFLOW_ADDRESSES.universalRouter),
-        params.amount == null ? maxUint160 : BigInt(params.amount),
+        BigInt(params.amount),
         params.expiration == null ? maxUint48 : Number(params.expiration),
       ],
     }),

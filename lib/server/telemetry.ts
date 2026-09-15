@@ -1,3 +1,4 @@
+import { getTrustedClientIp } from "@/lib/server/clientIp";
 import { supabaseAdmin } from "./devApiSupabase";
 
 export interface LogRequestParams {
@@ -20,14 +21,8 @@ export interface RecordUsageParams {
 
 function extractIpAddress(request?: Request): string | null {
   if (!request) return null;
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    const ip = forwarded.split(",")[0].trim();
-    if (ip && !ip.includes(":")) return ip; // Simple IPv4 check for inet compatibility
-  }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp && !realIp.includes(":")) return realIp.trim();
-  return null;
+  const ip = getTrustedClientIp(request.headers, "");
+  return ip || null;
 }
 
 function extractUserAgent(request?: Request): string | null {

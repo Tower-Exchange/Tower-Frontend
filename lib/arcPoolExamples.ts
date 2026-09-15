@@ -57,7 +57,7 @@ export async function example_getSwapQuote() {
 }
 
 // ============================================================================
-// EXAMPLE 3: Prepare a Swap Transaction (for signing with Privy)
+// EXAMPLE 3: Prepare a Swap Transaction (for signing with a connected wallet)
 // ============================================================================
 
 export function example_prepareSwap() {
@@ -76,7 +76,7 @@ export function example_prepareSwap() {
     value: txData.value,
   });
 
-  // This txData can be passed to Privy's sendTransaction()
+  // This txData can be passed to the connected wallet's sendTransaction()
   return txData;
 }
 
@@ -127,11 +127,11 @@ export function ExampleSwapComponent() {
 /* eslint-enable @typescript-eslint/no-unused-vars */
 
 // ============================================================================
-// EXAMPLE 5: Integration with Privy for Signing and Broadcasting
+// EXAMPLE 5: Sign and broadcast with a connected wallet
 // ============================================================================
 
-export async function example_executeSwapWithPrivy(
-  sendTransaction: (tx: { to: string; data: string; value: string }) => Promise<string> // Privy's sendTransaction function
+export async function example_executeSwapWithWallet(
+  sendTransaction: (tx: { to: string; data: string; value: string }) => Promise<string>
 ) {
   try {
     const amountIn = (BigInt(1000) * BigInt(10) ** BigInt(18)).toString();
@@ -143,7 +143,7 @@ export async function example_executeSwapWithPrivy(
       amountIn
     );
 
-    // 2. Send with Privy
+    // 2. Send with the connected wallet
     const txResponse = await sendTransaction({
       to: txData.to,
       data: txData.data,
@@ -151,10 +151,6 @@ export async function example_executeSwapWithPrivy(
     });
 
     console.log("Transaction sent:", txResponse);
-
-    // 3. Wait for confirmation (optional, depending on Privy API)
-    // const receipt = await txResponse.wait();
-    // console.log("Transaction confirmed:", receipt);
 
     return txResponse;
   } catch (error) {

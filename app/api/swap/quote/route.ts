@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSwapBackendUrl } from "@/lib/resolveSwapBackendUrl";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
+import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
+import {
+  enrichPublicSwapQuote,
+  resolveSlippageBps,
+} from "@/lib/swapApiContract";
 import {
   getTowerDexQuote,
   isTowerDexEnabled,
@@ -118,19 +124,6 @@ const readBackendQuoteError = async (response: Response) => {
   }
 };
 
-const resolveSlippageBps = (slippageTolerance: number) => {
-  if (!Number.isFinite(slippageTolerance) || slippageTolerance <= 0) {
-    return 50;
-  }
-
-  // Swap UI passes percent values like 0.5 or 1. API defaults use basis points.
-  if (slippageTolerance <= 5) {
-    return Math.round(slippageTolerance * 100);
-  }
-
-  return Math.round(slippageTolerance);
-};
-
 const towerDexQuoteToBackendQuote = (quote: TowerDexQuote): BackendQuote => ({
   inputToken: quote.inputToken,
   outputToken: quote.outputToken,
@@ -171,7 +164,7 @@ async function fetchLocalTowerDexQuote(params: {
     inputToken: params.inputToken,
     outputToken: params.outputToken,
     inputAmount: params.inputAmount,
-    slippageBps: resolveSlippageBps(params.slippageTolerance),
+    slippageBps: params.slippageTolerance,
   });
 
   return quote ? towerDexQuoteToBackendQuote(quote) : null;
@@ -676,7 +669,7 @@ async function fetchBackendQuotes(params: {
   return fanoutPromise;
 }
 
-export async function POST(request: NextRequest) {
+export async function handleSwapQuotePost(request: NextRequest) {
   try {
     if (SWAPS_DISABLED) {
       return NextResponse.json(SWAPS_DISABLED_RESPONSE, { status: 503 });
@@ -687,13 +680,15 @@ export async function POST(request: NextRequest) {
       inputToken,
       outputToken,
       inputAmount,
-      slippageTolerance = 50,
+      slippageTolerance,
+      slippage,
       dexId,
     } = body as {
       inputToken?: string;
       outputToken?: string;
       inputAmount?: string;
       slippageTolerance?: number;
+      slippage?: number;
       dexId?: string;
     };
     const normalizedRequestedDexId = normalizeDexId(dexId);
@@ -707,6 +702,20 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+
+    if (!isPositiveDecimalAmount(inputAmount)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "inputAmount must be a positive number",
+        },
+        { status: 400 },
+      );
+    }
+
+    const resolvedSlippageBps = resolveSlippageBps(
+      slippageTolerance ?? slippage,
+    );
 
     const resolvedInputToken = resolveTokenAddress(inputToken);
     const resolvedOutputToken = resolveTokenAddress(outputToken);
@@ -743,7 +752,7 @@ export async function POST(request: NextRequest) {
         inputToken: resolvedInputToken,
         outputToken: resolvedOutputToken,
         inputAmount,
-        slippageTolerance,
+        slippageTolerance: resolvedSlippageBps,
         backendDexIds,
         dexId: backendDexRequest,
       });
@@ -767,7 +776,7 @@ export async function POST(request: NextRequest) {
       inputToken: resolvedInputToken,
       outputToken: resolvedOutputToken,
       inputAmount,
-      slippageTolerance,
+      slippageTolerance: resolvedSlippageBps,
       backendDexIds,
       quotes: backendResult.quotes,
       routeOptions: backendResult.routeOptions,
@@ -780,7 +789,7 @@ export async function POST(request: NextRequest) {
         inputToken: resolvedInputToken,
         outputToken: resolvedOutputToken,
         inputAmount,
-        slippageTolerance,
+        slippageTolerance: resolvedSlippageBps,
       });
 
       if (localQuote) {
@@ -850,10 +859,10 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      data: {
+      data: enrichPublicSwapQuote({
         ...bestQuote,
         routeOptions,
-      },
+      }),
     });
   } catch (error) {
     if (error instanceof BackendQuoteError) {
@@ -877,3 +886,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withFrontendOriginGate(handleSwapQuotePost);

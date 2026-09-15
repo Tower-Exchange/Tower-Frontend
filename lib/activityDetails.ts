@@ -34,17 +34,28 @@ export type TransactionInfoDetails = {
 };
 
 export const EXPLORER_URL_BY_NETWORK_NAME: Record<string, string> = {
-  Arc: "https://testnet.arcscan.app/tx/",
+  Arc: "https://arc-scan.org/tx/",
   "Arc Testnet": "https://testnet.arcscan.app/tx/",
+  Base: "https://basescan.org/tx/",
   "Base Sepolia": "https://sepolia.basescan.org/tx/",
+  Optimism: "https://optimistic.etherscan.io/tx/",
   "Optimism Sepolia": "https://sepolia-optimism.etherscan.io/tx/",
+  Avalanche: "https://snowtrace.io/tx/",
   "Avalanche Fuji": "https://testnet.snowtrace.io/tx/",
+  Arbitrum: "https://arbiscan.io/tx/",
   "Arbitrum Sepolia": "https://sepolia.arbiscan.io/tx/",
+  Ethereum: "https://etherscan.io/tx/",
   "Ethereum Sepolia": "https://sepolia.etherscan.io/tx/",
+  Linea: "https://lineascan.build/tx/",
   "Linea Sepolia": "https://sepolia.lineascan.build/tx/",
+  Polygon: "https://polygonscan.com/tx/",
   "Polygon Amoy": "https://amoy.polygonscan.com/tx/",
+  Sonic: "https://sonicscan.org/tx/",
   "Sonic Testnet": "https://testnet.sonicscan.org/tx/",
+  Unichain: "https://uniscan.xyz/tx/",
   "Unichain Sepolia": "https://unichain-sepolia.blockscout.com/tx/",
+  Solana: "https://explorer.solana.com/tx/",
+  "Solana Devnet": "https://explorer.solana.com/tx/",
 };
 
 export const getActivityExplorerUrl = (row: ActivityRow) => {
@@ -57,11 +68,18 @@ export const getActivityExplorerUrl = (row: ActivityRow) => {
   }
 
   const preferredNetwork = row.destination_network_name || row.source_network_name;
-  const explorerBaseUrl =
-    EXPLORER_URL_BY_NETWORK_NAME[preferredNetwork] ||
-    EXPLORER_URL_BY_NETWORK_NAME[row.source_network_name];
+  const explorerNetwork = EXPLORER_URL_BY_NETWORK_NAME[preferredNetwork]
+    ? preferredNetwork
+    : row.source_network_name;
+  const explorerBaseUrl = EXPLORER_URL_BY_NETWORK_NAME[explorerNetwork];
 
-  return explorerBaseUrl ? `${explorerBaseUrl}${row.transaction_hash}` : null;
+  if (!explorerBaseUrl) {
+    return null;
+  }
+
+  return explorerNetwork === "Solana Devnet"
+    ? `${explorerBaseUrl}${row.transaction_hash}?cluster=devnet`
+    : `${explorerBaseUrl}${row.transaction_hash}`;
 };
 
 export const getExplorerHomeUrl = (networkName?: string | null) => {

@@ -1,0 +1,44 @@
+{
+  "source": "https://docs.synthra.org/docs/contract-addresses#arc-mainnet-5042-",
+  "network": "arc-mainnet",
+  "chainId": 5042,
+  "verifiedOnRpc": "https://rpc.arc-scan.org",
+  "notes": [
+    "Most V3 addresses are CREATE2-identical to Robinhood Chain (4663). Universal Router is Arc-specific.",
+    "The Arc LaunchPad address string matches the Robinhood Universal Router. Always key by chainId + address.",
+    "Native wrap/unwrap and value-carrying Universal Router commands are unsupported on Arc.",
+    "Do not copy Arc testnet (5042002) pool or token addresses except USDC at 0x3600…0000.",
+    "Leave SYNTHRA_MAINNET_DIRECT_PAIRS empty until Synthra seeds supported token pools."
+  ],
+  "v3": {
+    "factory": "0x6307fc239C7964942c1BfFE51930E55606619c74",
+    "universalRouter": "0xe4C51D643A7d6D94be2646e482C59CF681B7AcEB",
+    "swapRouter02": "0xa50eDe66a573eE5bB37E28AF5789B76aE5FEb828",
+    "permit2": "0x000000000022D473030F116dDEE9F6B43aC78BA3",
+    "quoterV2": "0x9c179A7335B3fc841F59Aa6a62daf6d5c61b65D7",
+    "nonfungiblePositionManager": "0x2743b771659fD9CE13970d7367e7e84AF6a31049",
+    "tickLens": "0x4A43Bd076160779F8120b48fb99Ce8adB5A25C8d",
+    "multicall2": "0x2619d7c51B74b271a657e7174f9283DC95852a46",
+    "protocolFeeRecipient": "0x1CAB229e4D75E4DE0EC890bef0295a32BAaa1328",
+    "unsupportedProtocol": "0x8bcEaA40B9AcdfAedF85AdF4FF01F5Ad6517937f",
+    "poolInitCodeHash": "0xd57f04bba45e2c271c16c370a90dc3bbfa3e4f5c9ffff0981b979a7bcdeac7c3",
+    "feeTiers": [100, 500, 3000, 10000]
+  },
+  "tokens": {
+    "USDC": "0x3600000000000000000000000000000000000000"
+  },
+  "launchpad": {
+    "launchPad": "0x18D33De5eefB2F91B09385f35f6a1317659cc1F9",
+    "launchPadLens": "0x73977148805efB2bf7abF0c6fe58b01C3D25FCBB",
+    "v3Migrator": "0x27414AC278111c7f02aec2b82aFdD8575e53964f",
+    "lpLocker": "0xCE8E6ec91d39b5a0b36920DA5d69f82C253e05f2"
+  },
+  "towerSwapExecutorAllowlist": {
+    "routeTargets": ["0xe4C51D643A7d6D94be2646e482C59CF681B7AcEB"],
+    "approvalSpenders": [
+      "0xe4C51D643A7d6D94be2646e482C59CF681B7AcEB",
+      "0xa50eDe66a573eE5bB37E28AF5789B76aE5FEb828",
+      "0x000000000022D473030F116dDEE9F6B43aC78BA3"
+    ]
+  }
+}

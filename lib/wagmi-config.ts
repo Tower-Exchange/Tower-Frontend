@@ -17,14 +17,18 @@ import {
 import {
   arbitrum,
   arbitrumSepolia,
+  avalanche,
   avalancheFuji,
   base,
   baseSepolia,
+  linea,
   mainnet,
   optimism,
   optimismSepolia,
   polygon,
   sepolia,
+  sonic,
+  unichain,
 } from "viem/chains";
 
 const rpcProxyUrl = (chainId: number) => `/api/rpc/${chainId}`;
@@ -137,12 +141,34 @@ const unichainSepolia = {
   testnet: true,
 } as const;
 
+const arcMainnet = {
+  id: 5042,
+  name: "Arc",
+  nativeCurrency: {
+    decimals: 18,
+    name: "USDC",
+    symbol: "USDC",
+  },
+  rpcUrls: {
+    default: { http: ["https://rpc.arc-scan.org"] },
+  },
+  blockExplorers: {
+    default: { name: "ArcScan", url: "https://arc-scan.org" },
+  },
+  testnet: false,
+} as const;
+
 const supportedChains = [
   ethereumMainnet,
   polygon,
   arbitrum,
   base,
   optimism,
+  avalanche,
+  linea,
+  sonic,
+  unichain,
+  arcMainnet,
   sepolia,
   arcTestnet,
   baseSepolia,
@@ -191,6 +217,11 @@ export const wagmiConfig = createConfig({
     [arbitrum.id]: http(rpcProxyUrl(arbitrum.id)),
     [base.id]: http(rpcProxyUrl(base.id)),
     [optimism.id]: http(rpcProxyUrl(optimism.id)),
+    [avalanche.id]: http(rpcProxyUrl(avalanche.id)),
+    [linea.id]: http(rpcProxyUrl(linea.id)),
+    [sonic.id]: http(rpcProxyUrl(sonic.id)),
+    [unichain.id]: http(rpcProxyUrl(unichain.id)),
+    [arcMainnet.id]: http(rpcProxyUrl(arcMainnet.id)),
     [sepolia.id]: http(rpcProxyUrl(sepolia.id)),
     [arcTestnet.id]: http(rpcProxyUrl(arcTestnet.id)),
     [baseSepolia.id]: http(rpcProxyUrl(baseSepolia.id)),

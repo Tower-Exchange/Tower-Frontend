@@ -54,6 +54,9 @@ export interface ApprovalTransaction {
   gasLimit: string;
   value?: string;
   label?: string;
+  token?: string;
+  spender?: string;
+  amountRaw?: string;
 }
 
 export interface GasEstimate {

@@ -5,7 +5,6 @@ import {
   getAddress,
   http,
   isAddress,
-  maxUint256,
   type Address,
   type Hex,
   type PublicClient,
@@ -900,11 +899,14 @@ export async function buildTowerDexSwapTransaction(params: {
           data: encodeFunctionData({
             abi: ERC20_APPROVE_ABI,
             functionName: "approve",
-            args: [approvalSpender, maxUint256],
+            args: [approvalSpender, amountInNative],
           }),
           from: userAddress,
           gasLimit: toHexQuantity(100000),
           label: useExecutorFeePath ? "Executor approval" : "Router approval",
+          spender: approvalSpender,
+          amountRaw: amountInNative.toString(),
+          token: tokenIn,
         };
 
   if (!useExecutorFeePath) {

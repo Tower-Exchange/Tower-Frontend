@@ -6,9 +6,7 @@ import { useAccount, useDisconnect } from "wagmi";
 import { logoutWalletSession } from "@/lib/walletSessionClient";
 
 /**
- * RainbowKit Compatibility Hook
- * Provides a Privy-like interface to minimize component changes
- * during migration
+ * RainbowKit wallet auth hook used by InviteGate and other connect flows.
  */
 export const useRainbowKitAuth = () => {
   const { address, isConnected, chainId, status } = useAccount();
