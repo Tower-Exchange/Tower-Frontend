@@ -1660,7 +1660,8 @@ export default function BridgePageContent({
                               ? "Enter Solana address..."
                               : "0x..."
                           }
-                          className="w-full bg-transparent px-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none font-sora"
+                          className="w-full bg-transparent px-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none font-sora [font-family:var(--font-sora)]"
+                          style={{ fontFamily: "var(--font-sora)" }}
                         />
                         {receivingAddress && (
                           <button
