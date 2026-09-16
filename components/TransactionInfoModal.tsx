@@ -164,7 +164,7 @@ const InfoRow = ({
 }) => (
   <div className="flex items-center justify-between gap-4">
     <div className="flex min-w-0 items-center gap-2 text-[0.95rem] font-medium text-foreground">
-      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-foreground border-white border">
+      <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center text-foreground">
         {icon}
       </span>
       <span className="truncate">{label}</span>
