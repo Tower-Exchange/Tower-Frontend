@@ -909,6 +909,7 @@ export default function BridgePageContent({
           transactionHash: result.transactionHash,
           fee: bridgeHook.estimatedFee,
           status: isPending ? "Pending" : "Successful",
+          destinationAddress: destinationAddress || undefined,
         });
 
         await registerBridgeFee({
