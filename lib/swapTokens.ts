@@ -49,20 +49,20 @@ export const SWAP_TOKENS: readonly SwapToken[] = [
     balance: 0,
     usdPrice: DEFAULT_TOKEN_USD_PRICES.cirBTC,
   },
-  {
-    symbol: "cNGN",
-    icon: cngnLogo,
-    name: "Compliant Naira",
-    balance: 0,
-    usdPrice: DEFAULT_TOKEN_USD_PRICES.cNGN,
-  },
-  {
-    symbol: "QCAD",
-    icon: qcadLogo,
-    name: "Canadian Dollar",
-    balance: 0,
-    usdPrice: DEFAULT_TOKEN_USD_PRICES.QCAD,
-  },
+  // {
+  //   symbol: "cNGN",
+  //   icon: cngnLogo,
+  //   name: "Compliant Naira",
+  //   balance: 0,
+  //   usdPrice: DEFAULT_TOKEN_USD_PRICES.cNGN,
+  // },
+  // {
+  //   symbol: "QCAD",
+  //   icon: qcadLogo,
+  //   name: "Canadian Dollar",
+  //   balance: 0,
+  //   usdPrice: DEFAULT_TOKEN_USD_PRICES.QCAD,
+  // },
 ] as const;
 
 const QCAD_SWAP_PAIR_KEYS = QCAD_SWAP_PAIRS_ENABLED
@@ -93,14 +93,14 @@ const SUPPORTED_SWAP_PAIR_KEYS = new Set<string>([
   "CIRBTC:USDT",
   "EURC:CIRBTC",
   "CIRBTC:EURC",
-  "USDC:CNGN",
-  "CNGN:USDC",
-  "USDT:CNGN",
-  "CNGN:USDT",
-  "EURC:CNGN",
-  "CNGN:EURC",
-  "CIRBTC:CNGN",
-  "CNGN:CIRBTC",
+  // "USDC:CNGN",
+  // "CNGN:USDC",
+  // "USDT:CNGN",
+  // "CNGN:USDT",
+  // "EURC:CNGN",
+  // "CNGN:EURC",
+  // "CIRBTC:CNGN",
+  // "CNGN:CIRBTC",
   ...QCAD_SWAP_PAIR_KEYS,
 ]);
 

@@ -190,7 +190,7 @@ export const buildTransactionInfoDetails = (
     transactionHash: row.transaction_hash,
     transactionUrl: getActivityExplorerUrl(row),
     sourceAddress: row.wallet_address,
-    destinationAddress: row.wallet_address,
+    destinationAddress: row.destination_address || row.wallet_address,
     sourceTokenIcon: getTokenIcon(row.source_currency_ticker),
     destinationTokenIcon: getTokenIcon(destinationToken || row.source_currency_ticker),
     sourceChainIcon: getChainLogoByName(row.source_network_name) ?? arcLogo,

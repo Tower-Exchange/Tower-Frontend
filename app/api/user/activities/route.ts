@@ -78,6 +78,10 @@ export async function POST(request: NextRequest) {
         typeof body.destination_network_name === "string"
           ? body.destination_network_name
           : null,
+      destination_address:
+        typeof body.destination_address === "string" && body.destination_address.trim()
+          ? body.destination_address.trim()
+          : null,
       status:
         typeof body.status === "string" && body.status.trim()
           ? body.status
