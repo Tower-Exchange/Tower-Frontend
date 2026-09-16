@@ -21,13 +21,17 @@ function retryDelayMs(message, attempt) {
 }
 
 function mainnetHint(host) {
-  if (!/arc-scan\.org$/i.test(host) && host !== "rpc.arc-scan.org") {
+  if (
+    !/arc-scan\.org$/i.test(host) &&
+    host !== "rpc.arc-scan.org" &&
+    !/mainnet\.arc\.io$/i.test(host)
+  ) {
     return "";
   }
 
   return [
-    "Arcscan public RPC (https://rpc.arc-scan.org) failovers across providers and returns -32603 unreachable when none answer. See https://docs.arc-scan.org/docs/rpc.",
-    "Hardhat now retries that error. If it still fails, set ARC_MAINNET_RPC_URL in contracts/.env to a keyed Alchemy/QuickNode/dRPC/Blockdaemon Arc mainnet URL.",
+    "Official Arc mainnet RPC is https://rpc.mainnet.arc.io (Blockdaemon/dRPC/QuickNode fallbacks at *.mainnet.arc.io).",
+    "If eth_sendRawTransaction fails on the public endpoint, set ARC_MAINNET_RPC_URL to a keyed Alchemy/QuickNode/dRPC/Blockdaemon URL.",
     "Do not point that variable at the testnet Alchemy URL (arc-testnet.g.alchemy.com).",
   ].join("\n");
 }

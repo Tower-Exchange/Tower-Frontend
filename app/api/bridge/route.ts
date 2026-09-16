@@ -30,7 +30,14 @@ import {
   UnichainSepolia,
 } from "@circle-fin/bridge-kit/chains";
 import { createPublicClient, createWalletClient, http, isAddress, zeroAddress, Chain as ViemChain } from "viem";
+import { ARC_MAINNET_PUBLIC_RPC_URL } from "@/lib/arcNetwork";
 import {
+  ArcMainnet,
+  getCircleBridgeTokenRegistry,
+  withCircleChainAwareViemAdapter,
+} from "@/lib/circleArcMainnet";
+import {
+  BRIDGE_EURC_ADDRESSES,
   BRIDGE_USDC_ADDRESSES,
   getBridgeNetworkMode,
 } from "@/lib/bridgeNetworks";
@@ -42,6 +49,12 @@ const getSupportedTokens = () => [
     name: "USD Coin",
     decimals: 6,
     chainAddresses: BRIDGE_USDC_ADDRESSES,
+  },
+  {
+    symbol: "EURC",
+    name: "Euro Coin",
+    decimals: 6,
+    chainAddresses: BRIDGE_EURC_ADDRESSES,
   },
 ];
 
@@ -58,7 +71,7 @@ const DIRECT_RPC_URLS: Record<number, string> = {
   43114: "https://api.avax.network/ext/bc/C/rpc",
   42161: "https://arb1.arbitrum.io/rpc",
   59144: "https://rpc.linea.build",
-  5042: "https://rpc.arc-scan.org",
+  5042: ARC_MAINNET_PUBLIC_RPC_URL,
   5042002: "https://rpc.testnet.arc.network",
   84532: "https://sepolia.base.org",
   11155420: "https://sepolia.optimism.io",
@@ -143,6 +156,7 @@ const CIRCLE_CHAIN_OBJECTS = {
   Avalanche,
   Arbitrum,
   Linea,
+  Arc: ArcMainnet,
   Arc_Testnet: ArcTestnet,
   Base_Sepolia: BaseSepolia,
   Optimism_Sepolia: OptimismSepolia,
@@ -218,7 +232,9 @@ async function createServerBridgeAdapter(): Promise<any> {
     supportedChains,
   };
 
-  return new (ViemAdapter as any)(adapterOptions, capabilities);
+  return withCircleChainAwareViemAdapter(
+    new (ViemAdapter as any)(adapterOptions, capabilities),
+  );
 }
 
 /**
@@ -301,12 +317,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    if (body.fromChainId === 5042 || body.toChainId === 5042) {
+    const tokenSymbol = String(body.token || "USDC").toUpperCase();
+    const tokenAddresses =
+      tokenSymbol === "EURC"
+        ? BRIDGE_EURC_ADDRESSES
+        : tokenSymbol === "USDC"
+          ? BRIDGE_USDC_ADDRESSES
+          : null;
+
+    if (
+      !tokenAddresses ||
+      !tokenAddresses[fromTokenKey] ||
+      !tokenAddresses[toTokenKey]
+    ) {
       return NextResponse.json(
         {
           success: false,
           error:
-            "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.",
+            tokenSymbol === "EURC"
+              ? "EURC can be bridged between Ethereum, Base, and Arc on mainnet, or Ethereum Sepolia, Base Sepolia, and Arc Testnet."
+              : `Token ${body.token} not available on the selected route`,
         },
         { status: 400 }
       );
@@ -399,7 +429,12 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         useForwarder: body.useForwarder ?? true,
       },
       amount: body.amount,
-      token: body.token, // Use token symbol (e.g., "USDC"), not contract address
+      token: tokenSymbol,
+      invocationMeta: {
+        tokens: getCircleBridgeTokenRegistry({
+          arcMainnet: body.fromChainId === 5042 || body.toChainId === 5042,
+        }),
+      },
     });
 
     console.log("Bridge transaction result type:", typeof result);

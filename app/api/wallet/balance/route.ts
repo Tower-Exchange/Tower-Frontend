@@ -9,8 +9,10 @@ import {
   isAddress,
 } from "viem";
 import { Connection, LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { ARC_RPC_ENDPOINTS } from "@/lib/arcRpc";
+import { ARC_MAINNET_RPC_ENDPOINTS, ARC_RPC_ENDPOINTS } from "@/lib/arcRpc";
 import {
+  BRIDGE_EURC_ADDRESSES,
+  BRIDGE_EURC_DECIMALS,
   BRIDGE_USDC_ADDRESSES,
   isNativeArcUsdcChain,
   isSolanaBridgeChain,
@@ -57,20 +59,29 @@ const SONIC_TESTNET_RPC_URLS = uniqueRpcUrls(
   ["https://rpc.testnet.soniclabs.com"],
 );
 
-const KNOWN_ERC20_DECIMALS: Record<string, number> = Object.fromEntries(
-  Object.values(BRIDGE_USDC_ADDRESSES)
-    .filter((address) => address.startsWith("0x"))
-    .map((address) => [
+const KNOWN_ERC20_DECIMALS: Record<string, number> = {
+  ...Object.fromEntries(
+    Object.values(BRIDGE_USDC_ADDRESSES)
+      .filter((address) => address.startsWith("0x"))
+      .map((address) => [
+        address.toLowerCase(),
+        address.toLowerCase() === ARC_NATIVE_USDC_ADDRESS
+          ? ARC_NATIVE_USDC_DECIMALS
+          : 6,
+      ]),
+  ),
+  ...Object.fromEntries(
+    Object.values(BRIDGE_EURC_ADDRESSES).map((address) => [
       address.toLowerCase(),
-      address.toLowerCase() === ARC_NATIVE_USDC_ADDRESS
-        ? ARC_NATIVE_USDC_DECIMALS
-        : 6,
+      BRIDGE_EURC_DECIMALS,
     ]),
-);
+  ),
+};
 
 const RPC_URL_FALLBACKS: Record<string, string[]> = {
   "arc-testnet": [...ARC_RPC_ENDPOINTS],
-  arc: ["https://rpc.arc-scan.org"],
+  arc: [...ARC_MAINNET_RPC_ENDPOINTS],
+  "5042": [...ARC_MAINNET_RPC_ENDPOINTS],
   "421614": [
     "https://sepolia-rollup.arbitrum.io/rpc",
     "https://arbitrum-sepolia-rpc.publicnode.com",

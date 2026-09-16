@@ -13,9 +13,9 @@ import type { Address } from "viem";
  * mainnet UnitFlowAdapter yet.
  */
 export const UNITFLOW_MAINNET_CHAIN_ID = 5042;
-export const UNITFLOW_MAINNET_PUBLIC_RPC_URL = "https://rpc.arc-scan.org";
+export const UNITFLOW_MAINNET_PUBLIC_RPC_URL = "https://rpc.mainnet.arc.io";
 export const UNITFLOW_MAINNET_PROXY_RPC_PATH = "/api/rpc/5042";
-export const UNITFLOW_MAINNET_EXPLORER_URL = "https://arc-scan.org";
+export const UNITFLOW_MAINNET_EXPLORER_URL = "https://explorer.arc.io";
 
 export const unitFlowArcMainnet = {
   id: UNITFLOW_MAINNET_CHAIN_ID,
@@ -29,7 +29,7 @@ export const unitFlowArcMainnet = {
     default: { http: [UNITFLOW_MAINNET_PUBLIC_RPC_URL] },
   },
   blockExplorers: {
-    default: { name: "Arc Scan", url: UNITFLOW_MAINNET_EXPLORER_URL },
+    default: { name: "Arc Explorer", url: UNITFLOW_MAINNET_EXPLORER_URL },
   },
   testnet: false,
 } as const;

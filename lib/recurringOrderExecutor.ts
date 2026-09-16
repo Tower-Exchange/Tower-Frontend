@@ -9,12 +9,16 @@ import {
   stringToBytes,
 } from "viem";
 import {
-  ARC_CHAIN_HEX,
   ERC20_TOKENS,
   NATIVE_TOKENS,
   TOKEN_CONTRACTS,
   TOKEN_DECIMALS,
+  getArcNetworkHex,
+  getArcNetworkLabel,
+  normalizeArcChainHex,
 } from "@/lib/arcNetwork";
+import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
+import { readStoredBridgeNetworkMode } from "@/lib/bridgeNetworks";
 import { getBrowserWalletChainId, getBrowserWalletProvider } from "@/lib/browser-wallet";
 
 export const RECURRING_ORDER_EXECUTOR_ADDRESS =
@@ -169,10 +173,17 @@ export const authorizeRecurringOrderOnchain = async ({
   }
 
   const provider = getBrowserWalletProvider();
+  const mode = readStoredBridgeNetworkMode();
+  await ensureWalletOnArcNetwork(mode);
   const currentChainId = await getBrowserWalletChainId(provider);
 
-  if (currentChainId !== ARC_CHAIN_HEX) {
-    throw new Error("Please switch to Arc Testnet before authorizing this recurring order.");
+  if (
+    normalizeArcChainHex(currentChainId) !==
+    normalizeArcChainHex(getArcNetworkHex(mode))
+  ) {
+    throw new Error(
+      `Please switch to ${getArcNetworkLabel(mode)} before authorizing this recurring order.`,
+    );
   }
 
   const decimals = TOKEN_DECIMALS[sourceToken] ?? 18;
@@ -263,10 +274,17 @@ export const cancelRecurringOrderOnchain = async ({
   }
 
   const provider = getBrowserWalletProvider();
+  const mode = readStoredBridgeNetworkMode();
+  await ensureWalletOnArcNetwork(mode);
   const currentChainId = await getBrowserWalletChainId(provider);
 
-  if (currentChainId !== ARC_CHAIN_HEX) {
-    throw new Error("Please switch to Arc Testnet before cancelling this recurring order.");
+  if (
+    normalizeArcChainHex(currentChainId) !==
+    normalizeArcChainHex(getArcNetworkHex(mode))
+  ) {
+    throw new Error(
+      `Please switch to ${getArcNetworkLabel(mode)} before cancelling this recurring order.`,
+    );
   }
 
   const orderKey = (onchainOrderKey || getRecurringOrderKey(orderId)) as `0x${string}`;

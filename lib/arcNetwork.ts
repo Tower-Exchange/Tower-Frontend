@@ -34,12 +34,22 @@ export const ARC_ADD_NETWORK_PARAMS = [
   },
 ];
 
+// Official Arc mainnet endpoints: https://docs.arc.io/arc/references/connect-to-arc#rpc-endpoints
+export const ARC_MAINNET_PUBLIC_RPC_URL = "https://rpc.mainnet.arc.io";
+export const ARC_MAINNET_EXPLORER_URL = "https://explorer.arc.io";
+export const ARC_MAINNET_RPC_URLS = [
+  ARC_MAINNET_PUBLIC_RPC_URL,
+  "https://rpc.blockdaemon.mainnet.arc.io",
+  "https://rpc.drpc.mainnet.arc.io",
+  "https://rpc.quicknode.mainnet.arc.io",
+] as const;
+
 export const ARC_MAINNET_CONFIG = {
   chainId: 5042,
-  rpcUrl: "https://rpc.arc-scan.org",
+  rpcUrl: ARC_MAINNET_PUBLIC_RPC_URL,
   currency: "USDC",
   decimals: 18,
-  explorerUrl: "https://arc-scan.org",
+  explorerUrl: ARC_MAINNET_EXPLORER_URL,
 };
 
 export const ARC_MAINNET_CHAIN_HEX = "0x13b2"; // 5042 in hex
@@ -52,10 +62,33 @@ export const ARC_MAINNET_ADD_NETWORK_PARAMS = [
       symbol: "USDC",
       decimals: 18,
     },
-    rpcUrls: ["https://rpc.arc-scan.org"],
-    blockExplorerUrls: ["https://arc-scan.org"],
+    rpcUrls: [...ARC_MAINNET_RPC_URLS],
+    blockExplorerUrls: [ARC_MAINNET_EXPLORER_URL],
   },
 ];
+
+export const ARC_NETWORK_CHAIN_ID = {
+  testnet: 5042002,
+  mainnet: 5042,
+} as const;
+
+export const getArcNetworkHex = (mode: "testnet" | "mainnet") =>
+  mode === "mainnet" ? ARC_MAINNET_CHAIN_HEX : ARC_CHAIN_HEX;
+
+export const getArcAddNetworkParams = (mode: "testnet" | "mainnet") =>
+  mode === "mainnet" ? ARC_MAINNET_ADD_NETWORK_PARAMS : ARC_ADD_NETWORK_PARAMS;
+
+export const getArcNetworkLabel = (mode: "testnet" | "mainnet") =>
+  mode === "mainnet" ? "Arc Mainnet" : "Arc Testnet";
+
+export const normalizeArcChainHex = (chainId: string | number) => {
+  const value =
+    typeof chainId === "number"
+      ? `0x${chainId.toString(16)}`
+      : chainId.trim().toLowerCase();
+  const normalized = value.startsWith("0x") ? value : `0x${value}`;
+  return `0x${BigInt(normalized).toString(16)}`;
+};
 
 // QuantumExchange API Configuration
 export const QUANTUM_EXCHANGE_CONFIG = {

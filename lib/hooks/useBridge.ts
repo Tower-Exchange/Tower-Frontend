@@ -48,6 +48,7 @@ export interface UseBridgeResult extends BridgeState {
     toChain: string | null,
     amount: string,
     toAddress: string,
+    tokenSymbol?: string,
   ) => string | null;
   calculateBridgeDetails: (
     fromChain: string,
@@ -173,7 +174,8 @@ export function useBridge(): UseBridgeResult {
       fromChain: string | null,
       toChain: string | null,
       amount: string,
-      toAddress: string
+      toAddress: string,
+      tokenSymbol: string = "USDC",
     ): string | null => {
       if (!fromChain) return "Please select a source chain";
       if (!toChain) return "Please select a destination chain";
@@ -188,6 +190,7 @@ export function useBridge(): UseBridgeResult {
       const unavailableRouteError = getUnavailableCircleRouteError(
         fromChain,
         toChain,
+        tokenSymbol,
       );
       if (unavailableRouteError) {
         return unavailableRouteError;
@@ -251,7 +254,8 @@ export function useBridge(): UseBridgeResult {
         request.fromChain,
         request.toChain,
         request.amount,
-        request.toAddress || ""
+        request.toAddress || "",
+        request.token,
       );
 
       if (validationError) {

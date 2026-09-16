@@ -45,6 +45,10 @@ export const SOLANA_MAINNET_USDC_MINT =
 export const ARC_NATIVE_USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000";
 
+export const BRIDGE_EURC_DECIMALS = 6;
+export const CCTP_EXPANDED_EURC_TOKEN_ID =
+  "0x6ca9e29fa53becc29becaf4a90b9ca7a995ad4d2234880da13ca38c657fb241c";
+
 export const BRIDGE_USDC_ADDRESSES: Record<string, string> = {
   "arc-testnet": ARC_NATIVE_USDC_ADDRESS,
   "base-sepolia": "0x036CbD53842c5426634e7929541eC2318f3dCF7e",
@@ -70,9 +74,42 @@ export const BRIDGE_USDC_ADDRESSES: Record<string, string> = {
   "solana-mainnet": SOLANA_MAINNET_USDC_MINT,
 };
 
+// Circle CCTP expanded assets (non-USDC). Live Iris EURC deployments plus
+// Circle kit locators for the matching testnets. EVM-only; Solana is excluded.
+// https://developers.circle.com/cctp/expanded-assets/concepts/supported-chains-and-domains
+export const BRIDGE_EURC_ADDRESSES: Record<string, string> = {
+  "arc-testnet": "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+  "ethereum-sepolia": "0x08210F9170F89Ab7658F0B5E3fF39b0E03C594D4",
+  "base-sepolia": "0x808456652fdb597867f38412077A9182bf77359F",
+  arc: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+  ethereum: "0x1aBaEA1f7C830bD89Acc67eC4af516284b1bC33c",
+  base: "0x60a3E35Cc302bFA44Cb288Bc5a4F316Fdb1adb42",
+};
+
+export const getBridgeTokenAddress = (
+  chainId?: string | null,
+  tokenSymbol?: string | null,
+) => {
+  if (!chainId) {
+    return null;
+  }
+
+  const symbol = tokenSymbol?.toUpperCase() || "USDC";
+  if (symbol === "EURC") {
+    return BRIDGE_EURC_ADDRESSES[chainId] ?? null;
+  }
+
+  return BRIDGE_USDC_ADDRESSES[chainId] ?? null;
+};
+
+export const isBridgeTokenSupportedOnChain = (
+  chainId?: string | null,
+  tokenSymbol?: string | null,
+) => Boolean(getBridgeTokenAddress(chainId, tokenSymbol));
+
 export const BRIDGE_EXPLORER_TX_URLS: Record<string, string> = {
   "arc-testnet": "https://testnet.arcscan.app/tx/",
-  arc: "https://arc-scan.org/tx/",
+  arc: "https://explorer.arc.io/tx/",
   "base-sepolia": "https://sepolia.basescan.org/tx/",
   base: "https://basescan.org/tx/",
   "optimism-sepolia": "https://sepolia-optimism.etherscan.io/tx/",
@@ -179,6 +216,8 @@ export const readStoredBridgeNetworkMode = (): BridgeNetworkMode => {
   }
 };
 
+export const TOWER_NETWORK_MODE_EVENT = "tower-network-mode";
+
 export const storeBridgeNetworkMode = (mode: BridgeNetworkMode) => {
   if (typeof window === "undefined") {
     return;
@@ -186,6 +225,11 @@ export const storeBridgeNetworkMode = (mode: BridgeNetworkMode) => {
 
   try {
     window.sessionStorage.setItem(BRIDGE_NETWORK_STORAGE_KEY, mode);
+    window.dispatchEvent(
+      new CustomEvent<BridgeNetworkMode>(TOWER_NETWORK_MODE_EVENT, {
+        detail: mode,
+      }),
+    );
   } catch {
     // Ignore private-mode or storage quota failures.
   }

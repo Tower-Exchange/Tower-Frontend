@@ -117,12 +117,21 @@ const COMPACT_ERROR_LABELS: Array<{
     matches: ["token approval failed"],
   },
   {
-    label: "Unable to add Arc Testnet.",
-    matches: ["failed to add arc testnet network"],
+    label: "Unable to add Arc network.",
+    matches: [
+      "failed to add arc testnet network",
+      "please approve adding arc",
+    ],
   },
   {
-    label: "Switch to Arc Testnet.",
-    matches: ["invalid chain id", "please switch to arc testnet", "switch to arc testnet"],
+    label: "Switch Arc network.",
+    matches: [
+      "invalid chain id",
+      "please switch to arc testnet",
+      "please switch to arc mainnet",
+      "switch to arc testnet",
+      "switch to arc mainnet",
+    ],
   },
   {
     label: "RPC endpoint unavailable.",

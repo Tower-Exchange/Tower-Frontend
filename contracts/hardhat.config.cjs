@@ -22,13 +22,11 @@ const config = {
       chainId: 5042002,
       timeout: 60000,
     },
-    // Arc Mainnet. Public RPC: https://rpc.arc-scan.org (docs:
-    // https://docs.arc-scan.org/docs/rpc). It forwards eth_sendRawTransaction
-    // and fails over across providers; when none answer it returns -32603
-    // unreachable. The HttpProvider patch retries those. Prefer a keyed URL
-    // via ARC_MAINNET_RPC_URL when you have one.
+    // Arc Mainnet. Official public RPC: https://rpc.mainnet.arc.io
+    // (https://docs.arc.io/arc/references/connect-to-arc#rpc-endpoints).
+    // Prefer a keyed Alchemy/QuickNode/dRPC URL via ARC_MAINNET_RPC_URL.
     "arc-mainnet": {
-      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.arc-scan.org",
+      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.mainnet.arc.io",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 5042,
       timeout: 180000,

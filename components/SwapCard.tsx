@@ -16,14 +16,17 @@ import { formatUnits, parseUnits } from "viem";
 import {
   formatBalance,
   getRevertReasonViaPublicRpc,
-  ARC_TESTNET_CONFIG,
   TOKEN_CONTRACTS,
   TOKEN_DECIMALS,
   NATIVE_TOKENS,
-  ARC_CHAIN_HEX,
-  ARC_ADD_NETWORK_PARAMS,
+  getArcNetworkHex,
+  getArcNetworkLabel,
+  normalizeArcChainHex,
 } from "@/lib/arcNetwork";
+import { getArcRpcProxyPath } from "@/lib/arcRpc";
+import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
 import { useTowerSwap, type SwapQuote, type SwapRouteOption } from "@/lib/hooks/useTowerSwap";
+import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
 import {
   getSupportedCounterpartyTokens,
   isSupportedSwapPair,
@@ -67,7 +70,6 @@ const QUOTE_REFRESH_INTERVAL_MS = 10000;
 const TOKEN_PRICE_REFRESH_INTERVAL_MS = 60_000;
 const SWAP_SUCCESS_NOTIFICATION_DURATION_MS = 10000;
 const SWAP_SUCCESS_RESET_DELAY_MS = SWAP_SUCCESS_NOTIFICATION_DURATION_MS + 500;
-const ARC_RPC_PROXY_URL = `/api/rpc/${ARC_TESTNET_CONFIG.chainId}`;
 const ARC_NATIVE_USDC_DECIMALS = 18;
 const RECEIPT_REQUEST_TIMEOUT_MS = 12000;
 const RECEIPT_POLL_INTERVAL_MS = 1000;
@@ -109,12 +111,13 @@ const callArcRpc = async <T,>(
   params: unknown[],
   timeoutMs: number,
   label: string,
+  rpcUrl: string,
 ): Promise<T> => {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(ARC_RPC_PROXY_URL, {
+    const response = await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -161,11 +164,13 @@ const waitForArcTransactionReceipt = async (
     requestTimeoutMs = RECEIPT_REQUEST_TIMEOUT_MS,
     pollIntervalMs = RECEIPT_POLL_INTERVAL_MS,
     walletReceiptLookup,
+    rpcUrl,
   }: {
     label: string;
     maxWaitMs: number;
     requestTimeoutMs?: number;
     pollIntervalMs?: number;
+    rpcUrl: string;
     walletReceiptLookup?: (
       txHash: string,
       label: string,
@@ -185,6 +190,7 @@ const waitForArcTransactionReceipt = async (
         [txHash],
         requestTimeoutMs,
         `${label} via Arc RPC`,
+        rpcUrl,
       ).then((receipt) => ({ source: "Arc RPC", receipt })),
     ];
 
@@ -267,35 +273,43 @@ const waitForArcTransactionReceipt = async (
   return null;
 };
 
-const getArcTransactionByHash = (txHash: string, label: string) =>
+const getArcTransactionByHash = (
+  txHash: string,
+  label: string,
+  rpcUrl: string,
+) =>
   callArcRpc<RpcTransaction | null>(
     "eth_getTransactionByHash",
     [txHash],
     RECEIPT_REQUEST_TIMEOUT_MS,
     label,
+    rpcUrl,
   );
 
-const getArcLatestNonce = (address: string, label: string) =>
+const getArcLatestNonce = (address: string, label: string, rpcUrl: string) =>
   callArcRpc<string>(
     "eth_getTransactionCount",
     [address, "latest"],
     RECEIPT_REQUEST_TIMEOUT_MS,
     label,
+    rpcUrl,
   );
 
-const getArcFeeParams = async () => {
+const getArcFeeParams = async (rpcUrl: string) => {
   const [latestBlock, priorityFee] = await Promise.all([
     callArcRpc<{ baseFeePerGas?: string }>(
       "eth_getBlockByNumber",
       ["latest", false],
       RECEIPT_REQUEST_TIMEOUT_MS,
       "Arc latest block lookup",
+      rpcUrl,
     ),
     callArcRpc<string>(
       "eth_maxPriorityFeePerGas",
       [],
       RECEIPT_REQUEST_TIMEOUT_MS,
       "Arc priority fee lookup",
+      rpcUrl,
     ).catch(() => "0x59682f00"),
   ]);
   const baseFee = BigInt(latestBlock?.baseFeePerGas || "0x0");
@@ -631,8 +645,11 @@ const SwapCard = ({
   onNavigateToBridge?: () => void;
 }) => {
   const router = useRouter();
+  const { mode: arcNetworkMode, isReady: isNetworkModeReady } = useTowerNetworkMode();
+  const arcRpcUrl = getArcRpcProxyPath(arcNetworkMode);
   const { user, login, authenticated } = useRainbowKitAuth();
   const bridgeNavigationStartedRef = useRef(false);
+  const swapBalanceRequestIdRef = useRef(0);
 
   // Tower Exchange DEX Aggregator hook
   const { getQuote, buildSwapTransaction, error: towerError } = useTowerSwap();
@@ -732,53 +749,9 @@ const SwapCard = ({
     }
   }, [authenticated, user?.wallet?.address]);
 
-  // Function to switch/add Arc Testnet network
-  const switchToArcTestnet = async () => {
-    const ethereum = getBrowserWalletProvider();
-    const getWalletErrorCode = (error: unknown) =>
-      error && typeof error === "object" && "code" in error
-        ? (error as { code?: number }).code
-        : undefined;
-
-    try {
-      try {
-        await ethereum.request({
-          method: "wallet_addEthereumChain",
-          params: ARC_ADD_NETWORK_PARAMS,
-        });
-      } catch (addOrUpdateError) {
-        if (getWalletErrorCode(addOrUpdateError) === 4001) {
-          throw new Error(
-            "Please approve the Arc Testnet RPC update in your wallet before swapping.",
-          );
-        }
-
-        console.warn(
-          "Unable to refresh Arc Testnet RPC config:",
-          addOrUpdateError,
-        );
-      }
-
-      await ethereum.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: ARC_CHAIN_HEX }],
-      });
-    } catch (switchError: unknown) {
-      const switchErrorCode = getWalletErrorCode(switchError);
-      // This error code indicates that the chain has not been added to MetaMask
-      if (switchErrorCode === 4902) {
-        try {
-          await ethereum.request({
-            method: "wallet_addEthereumChain",
-            params: ARC_ADD_NETWORK_PARAMS,
-          });
-        } catch {
-          throw new Error("Failed to add Arc Testnet network");
-        }
-      } else {
-        throw switchError;
-      }
-    }
+  // Switch/add the Arc network currently selected in the header.
+  const switchToSelectedArcNetwork = async () => {
+    await ensureWalletOnArcNetwork(arcNetworkMode);
   };
 
   const toHexQuantity = (value: bigint | number | string) => {
@@ -1166,6 +1139,7 @@ const SwapCard = ({
           [user.wallet.address, "latest"],
           12000,
           `${tokenSymbol} balance lookup`,
+          arcRpcUrl,
         );
 
         return Number.parseFloat(
@@ -1186,6 +1160,7 @@ const SwapCard = ({
         ],
         12000,
         `${tokenSymbol} balance lookup`,
+        arcRpcUrl,
       );
 
       if (!rawBalance || rawBalance === "0x") {
@@ -1196,17 +1171,16 @@ const SwapCard = ({
         formatUnits(BigInt(rawBalance), TOKEN_DECIMALS[tokenSymbol] ?? 18),
       );
     },
-    [user?.wallet?.address],
+    [arcRpcUrl, user?.wallet?.address],
   );
 
-  // Fetch actual wallet balances from Arc testnet
   const fetchUserBalances = useCallback(async () => {
-    if (!user?.wallet?.address) {
-      console.log("Wallet address not available");
+    if (!isNetworkModeReady || !user?.wallet?.address) {
       return;
     }
 
-    console.log("Fetching balances for wallet:", user.wallet.address);
+    const requestId = ++swapBalanceRequestIdRef.current;
+    setTokenBalances(getEmptySwapTokenBalances());
     setIsLoadingBalances(true);
     try {
       const balanceEntries = await Promise.all(
@@ -1215,29 +1189,38 @@ const SwapCard = ({
           await fetchSwapTokenBalance(token.symbol),
         ] as const),
       );
+      if (requestId !== swapBalanceRequestIdRef.current) {
+        return;
+      }
       const nextTokenBalances = Object.fromEntries(balanceEntries);
-
-      console.log("Swap token balances:", nextTokenBalances);
 
       setTokenBalances((prev) => ({
         ...prev,
         ...nextTokenBalances,
       }));
     } catch (error) {
+      if (requestId !== swapBalanceRequestIdRef.current) {
+        return;
+      }
       console.error("Failed to fetch wallet balances:", error);
     } finally {
-      setIsLoadingBalances(false);
+      if (requestId === swapBalanceRequestIdRef.current) {
+        setIsLoadingBalances(false);
+      }
     }
-  }, [fetchSwapTokenBalance, user?.wallet?.address]);
+  }, [fetchSwapTokenBalance, isNetworkModeReady, user?.wallet?.address]);
 
-  // Sync wallet connection state with the active browser wallet
   useEffect(() => {
+    if (!isNetworkModeReady) {
+      return;
+    }
+
     if (authenticated && user) {
-      fetchUserBalances();
+      void fetchUserBalances();
     } else {
       setTokenBalances(getEmptySwapTokenBalances());
     }
-  }, [authenticated, user, fetchUserBalances]);
+  }, [authenticated, fetchUserBalances, isNetworkModeReady, user]);
 
   // Get display balance for a token (actual if available, mock otherwise)
   const getTokenBalance = (symbol: string): number => {
@@ -1752,22 +1735,22 @@ const SwapCard = ({
       // Refresh the Arc wallet RPC config before swaps. A stale wallet RPC can
       // return a hash for a tx that never propagates to Arc's public RPCs.
       try {
-        await switchToArcTestnet();
+        await switchToSelectedArcNetwork();
         await sleep(1000);
         const currentChainId = await walletRequest<string>(
           { method: "eth_chainId" },
           15000,
           "Arc network check",
         );
-        if (currentChainId !== ARC_CHAIN_HEX) {
-          throw new Error("Please switch to Arc Testnet to continue");
+        if (normalizeArcChainHex(currentChainId) !== normalizeArcChainHex(getArcNetworkHex(arcNetworkMode))) {
+          throw new Error(`Please switch to ${getArcNetworkLabel(arcNetworkMode)} to continue`);
         }
       } catch (networkError: unknown) {
         const networkErrorMessage =
           networkError instanceof Error ? networkError.message : null;
         throw new Error(
           networkErrorMessage ||
-            "Please switch to Arc Testnet network to perform swaps",
+            `Please switch to ${getArcNetworkLabel(arcNetworkMode)} to perform swaps`,
         );
       }
 
@@ -1809,9 +1792,9 @@ const SwapCard = ({
             `${txType} network check`,
           );
 
-          if (currentChainId !== ARC_CHAIN_HEX) {
+          if (normalizeArcChainHex(currentChainId) !== normalizeArcChainHex(getArcNetworkHex(arcNetworkMode))) {
             throw new Error(
-              `Invalid chain ID. Expected ${ARC_CHAIN_HEX} (Arc Testnet), got ${currentChainId}. Please switch to Arc Testnet.`,
+              `Invalid chain ID. Expected ${getArcNetworkHex(arcNetworkMode)} (${getArcNetworkLabel(arcNetworkMode)}), got ${currentChainId}. Please switch to ${getArcNetworkLabel(arcNetworkMode)}.`,
             );
           }
 
@@ -2018,7 +2001,7 @@ const SwapCard = ({
               approvalTxs.length > 1
                 ? `${approvalLabelBase.toUpperCase()} ${approvalIndex + 1}/${approvalTxs.length}`
                 : approvalLabelBase.toUpperCase();
-            const approvalFeeParams = await getArcFeeParams().catch(
+            const approvalFeeParams = await getArcFeeParams(arcRpcUrl).catch(
               (feeError: unknown) => {
                 console.warn(
                   `[${approvalLabel}] Could not load Arc EIP-1559 fee params; wallet will choose fees`,
@@ -2030,6 +2013,7 @@ const SwapCard = ({
             const approvalNonce = await getArcLatestNonce(
               userAddress,
               `${approvalLabel} nonce lookup`,
+              arcRpcUrl,
             );
 
             console.log(`Sending ${approvalLabel} transaction to MetaMask...`);
@@ -2053,6 +2037,7 @@ const SwapCard = ({
                 label: `${approvalLabel} receipt lookup`,
                 maxWaitMs: 60000,
                 walletReceiptLookup,
+                rpcUrl: arcRpcUrl,
               },
             );
 
@@ -2281,14 +2266,18 @@ const SwapCard = ({
         });
       }
 
-      const swapFeeParams = await getArcFeeParams().catch((feeError: unknown) => {
+      const swapFeeParams = await getArcFeeParams(arcRpcUrl).catch((feeError: unknown) => {
         console.warn(
           "[SWAP] Could not load Arc EIP-1559 fee params; wallet will choose fees",
           feeError,
         );
         return null;
       });
-      const swapNonce = await getArcLatestNonce(userAddress, "Swap nonce lookup");
+      const swapNonce = await getArcLatestNonce(
+        userAddress,
+        "Swap nonce lookup",
+        arcRpcUrl,
+      );
 
       console.log("Final swap transaction parameters:", {
         to: swapDataToSend.to,
@@ -2324,12 +2313,14 @@ const SwapCard = ({
         label: "Swap receipt lookup",
         maxWaitMs: 120000,
         walletReceiptLookup,
+        rpcUrl: arcRpcUrl,
       });
 
       if (!receipt) {
         const pendingTx = await getArcTransactionByHash(
           txHash,
           "Pending swap transaction lookup",
+          arcRpcUrl,
         ).catch((error: unknown) => {
           console.warn("[SwapCard] Could not look up pending swap transaction", {
             txHash,
@@ -2360,6 +2351,7 @@ const SwapCard = ({
               maxWaitMs: 15000,
               pollIntervalMs: 3000,
               walletReceiptLookup,
+              rpcUrl: arcRpcUrl,
             });
 
             if (receipt) {
@@ -2369,6 +2361,7 @@ const SwapCard = ({
             const latestPendingTx = await getArcTransactionByHash(
               txHash,
               "Extended pending swap transaction lookup",
+              arcRpcUrl,
             ).catch(() => null);
 
             if (!latestPendingTx) {

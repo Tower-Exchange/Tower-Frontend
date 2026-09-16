@@ -10,14 +10,12 @@ import {
   type BridgeNetworkMode,
   DEFAULT_BRIDGE_CHAIN,
   getBridgeNetworkMode,
-  inferBridgeNetworkMode,
-  parseBridgeNetworkMode,
   readStoredBridgeNetworkMode,
   remapChainForNetwork,
-  storeBridgeNetworkMode,
 } from "@/lib/bridgeNetworks";
 import { getBridgeSelectChains } from "@/lib/bridgeChainUi";
 import BridgeNetworkTabs from "@/components/BridgeNetworkTabs";
+import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
 
 type Chain = {
   id: string;
@@ -27,14 +25,7 @@ type Chain = {
   logo?: StaticImageData | string;
 };
 
-const getInitialNetworkMode = (
-  searchParams: URLSearchParams,
-): BridgeNetworkMode =>
-  inferBridgeNetworkMode(
-    searchParams.get("fromChain"),
-    searchParams.get("toChain"),
-  ) ||
-  parseBridgeNetworkMode(searchParams.get("network")) ||
+const getInitialNetworkMode = (): BridgeNetworkMode =>
   readStoredBridgeNetworkMode();
 
 export default function BridgeSelectContent() {
@@ -42,9 +33,14 @@ export default function BridgeSelectContent() {
   const router = useRouter();
   const side = searchParams.get("side") === "to" ? "to" : "from";
   const oppositeSide = side === "to" ? "from" : "to";
-  const [networkMode, setNetworkMode] = useState<BridgeNetworkMode>(() =>
-    getInitialNetworkMode(searchParams),
+  const [networkMode, setLocalNetworkMode] = useState<BridgeNetworkMode>(() =>
+    getInitialNetworkMode(),
   );
+  const {
+    mode: storedNetworkMode,
+    setNetworkMode,
+    isReady: isNetworkModeReady,
+  } = useTowerNetworkMode();
   const chains = useMemo(
     () => getBridgeSelectChains(networkMode) as Chain[],
     [networkMode],
@@ -61,7 +57,7 @@ export default function BridgeSelectContent() {
   const [tokens, setTokens] = useState<SupportedToken[]>([]);
   const [selectedChainId, setSelectedChainId] = useState<string>(() => {
     const currentChainId = searchParams.get(`${side}Chain`);
-    const mode = getInitialNetworkMode(searchParams);
+    const mode = getInitialNetworkMode();
     const remapped = remapChainForNetwork(currentChainId, mode);
     if (remapped && remapped !== "all") {
       return remapped;
@@ -72,8 +68,8 @@ export default function BridgeSelectContent() {
 
   const handleNetworkModeChange = useCallback(
     (mode: BridgeNetworkMode) => {
-      storeBridgeNetworkMode(mode);
       setNetworkMode(mode);
+      setLocalNetworkMode(mode);
       const nextSelected =
         selectedChainId === "all"
           ? selectedChainId
@@ -105,8 +101,22 @@ export default function BridgeSelectContent() {
       }
       router.replace(`/bridge/select?${current.toString()}`);
     },
-    [oppositeSide, router, searchParams, selectedChainId, side],
+    [oppositeSide, router, searchParams, selectedChainId, setNetworkMode, side],
   );
+
+  useEffect(() => {
+    if (!isNetworkModeReady || storedNetworkMode === networkMode) {
+      return;
+    }
+
+    setLocalNetworkMode(storedNetworkMode);
+    setSelectedChainId((previous) =>
+      previous === "all"
+        ? previous
+        : remapChainForNetwork(previous, storedNetworkMode) ||
+          DEFAULT_BRIDGE_CHAIN[storedNetworkMode],
+    );
+  }, [isNetworkModeReady, networkMode, storedNetworkMode]);
 
   // Fetch supported tokens for the selected chain
   useEffect(() => {
@@ -140,6 +150,30 @@ export default function BridgeSelectContent() {
 
     fetchTokens();
   }, [networkMode, selectedChainId]);
+
+  const closeSelect = useCallback(() => {
+    const mode = readStoredBridgeNetworkMode();
+    const current = new URLSearchParams(Array.from(searchParams.entries()));
+    current.delete("side");
+    current.set("network", mode);
+
+    const remappedFrom = remapChainForNetwork(current.get("fromChain"), mode);
+    const remappedTo = remapChainForNetwork(current.get("toChain"), mode);
+
+    if (remappedFrom && remappedFrom !== "all") {
+      current.set("fromChain", remappedFrom);
+    } else {
+      current.delete("fromChain");
+    }
+
+    if (remappedTo && remappedTo !== "all") {
+      current.set("toChain", remappedTo);
+    } else {
+      current.delete("toChain");
+    }
+
+    router.push(`/bridge?${current.toString()}`);
+  }, [router, searchParams]);
 
   const title = useMemo(
     () => (side === "to" ? "Exchange to" : "Exchange from"),
@@ -297,7 +331,7 @@ export default function BridgeSelectContent() {
             </div>
             <button
               type="button"
-              onClick={() => router.back()}
+              onClick={closeSelect}
               className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-card hover:bg-[#202225] text-muted-foreground transition-colors"
             >
               <X className="h-4 w-4" />
@@ -387,10 +421,47 @@ export default function BridgeSelectContent() {
                       );
                       current.set(`${side}Token`, token.symbol);
                       current.set("network", networkMode);
-                      if (selectedChainId) {
-                        current.set(`${side}Chain`, selectedChainId);
+                      let nextChainId = selectedChainId;
+                      if (
+                        nextChainId === "all" &&
+                        token.symbol !== "USDC"
+                      ) {
+                        nextChainId =
+                          token.chains.find(
+                            (chainId) =>
+                              getBridgeNetworkMode(chainId) === networkMode &&
+                              chainId !== oppositeChainId,
+                          ) || DEFAULT_BRIDGE_CHAIN[networkMode];
+                      } else if (
+                        nextChainId !== "all" &&
+                        !token.chainAddresses[nextChainId]
+                      ) {
+                        nextChainId =
+                          token.chains.find(
+                            (chainId) =>
+                              getBridgeNetworkMode(chainId) === networkMode &&
+                              chainId !== oppositeChainId,
+                          ) || DEFAULT_BRIDGE_CHAIN[networkMode];
                       }
-                      if (oppositeChainId) {
+                      if (nextChainId) {
+                        current.set(`${side}Chain`, nextChainId);
+                      }
+                      if (
+                        oppositeChainId &&
+                        oppositeChainId !== "all" &&
+                        !token.chainAddresses[oppositeChainId]
+                      ) {
+                        const remappedOpposite = token.chains.find(
+                          (chainId) =>
+                            getBridgeNetworkMode(chainId) === networkMode &&
+                            chainId !== nextChainId,
+                        );
+                        if (remappedOpposite) {
+                          current.set(`${oppositeSide}Chain`, remappedOpposite);
+                        } else {
+                          current.delete(`${oppositeSide}Chain`);
+                        }
+                      } else if (oppositeChainId) {
                         current.set(`${oppositeSide}Chain`, oppositeChainId);
                       }
                       router.push(`/bridge?${current.toString()}`);

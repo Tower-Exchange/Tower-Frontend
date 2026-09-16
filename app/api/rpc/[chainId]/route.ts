@@ -167,7 +167,11 @@ const RPC_ENDPOINTS: Record<string, string[]> = {
     [
       process.env.ARC_MAINNET_RPC_URL,
       process.env.NEXT_PUBLIC_ARC_MAINNET_RPC_URL,
-      "https://rpc.arc-scan.org",
+      process.env.ARC_MAINNET_ALCHEMY_RPC_URL,
+      "https://rpc.mainnet.arc.io",
+      "https://rpc.blockdaemon.mainnet.arc.io",
+      "https://rpc.drpc.mainnet.arc.io",
+      "https://rpc.quicknode.mainnet.arc.io",
     ].filter((value): value is string => Boolean(value && value.trim())),
   ),
   solana: SOLANA_RPC_ENDPOINTS,

@@ -130,8 +130,8 @@ const SUPPORTED_CHAINS = [
     key: "arc",
     type: "evm",
     nativeCurrency: { name: "USD Coin", symbol: "USDC", decimals: 18 },
-    rpcUrl: "https://rpc.arc-scan.org",
-    explorerUrl: "https://arc-scan.org",
+    rpcUrl: "https://rpc.mainnet.arc.io",
+    explorerUrl: "https://explorer.arc.io",
     supportedFeatures: ["bridge", "rpc-proxy", "wallet-balance"],
   },
   {

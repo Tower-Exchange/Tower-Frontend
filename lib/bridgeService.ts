@@ -70,13 +70,22 @@ import {
 import {
   ARC_ADD_NETWORK_PARAMS,
   ARC_MAINNET_ADD_NETWORK_PARAMS,
+  ARC_MAINNET_PUBLIC_RPC_URL,
 } from "@/lib/arcNetwork";
 import {
+  BRIDGE_EURC_ADDRESSES,
   BRIDGE_USDC_ADDRESSES,
   getBridgeNetworkMode,
+  isBridgeTokenSupportedOnChain,
   isSolanaBridgeChain,
   isSolanaMainnetChain,
 } from "@/lib/bridgeNetworks";
+import {
+  ARC_MAINNET_VIEM_CHAIN,
+  ArcMainnet,
+  getCircleBridgeTokenRegistry,
+  withCircleChainAwareViemAdapter,
+} from "@/lib/circleArcMainnet";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 
 // Chain mapping for viem
@@ -90,19 +99,7 @@ const VIEM_CHAIN_MAP: Record<number, ViemChain> = {
   43114: avalanche,
   42161: arbitrum,
   59144: linea,
-  5042: {
-    id: 5042,
-    name: "Arc",
-    network: "arc",
-    nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-    rpcUrls: {
-      default: { http: ["https://rpc.arc-scan.org"] },
-      public: { http: ["https://rpc.arc-scan.org"] },
-    },
-    blockExplorers: {
-      default: { name: "ArcScan", url: "https://arc-scan.org" },
-    },
-  } as ViemChain,
+  5042: ARC_MAINNET_VIEM_CHAIN,
   84532: baseSepolia,
   11155420: optimismSepolia,
   43113: avalancheFuji,
@@ -265,9 +262,9 @@ export const SUPPORTED_CHAINS = {
   arc: {
     name: "Arc",
     chainId: 5042,
-    rpcUrl: "https://rpc.arc-scan.org",
+    rpcUrl: ARC_MAINNET_PUBLIC_RPC_URL,
     nativeTokenSymbol: "USDC",
-    circleChain: "Arc" as const,
+    circleChain: "Arc_Testnet" as const,
     usdcAddress: BRIDGE_USDC_ADDRESSES.arc,
   },
   ethereum: {
@@ -380,6 +377,7 @@ const createSolanaBridgeConnection = (rpcUrl: string) =>
 
 const SUPPORTED_EVM_CIRCLE_CHAINS = [
   ArcTestnet,
+  ArcMainnet,
   BaseSepolia,
   OptimismSepolia,
   AvalancheFuji,
@@ -885,6 +883,7 @@ const CIRCLE_CHAIN_OBJECTS: Record<string, any> = {
   "sonic-testnet": SonicTestnet,
   "unichain-sepolia": UnichainSepolia,
   solana: SolanaDevnet,
+  arc: ArcMainnet,
   ethereum: Ethereum,
   optimism: Optimism,
   unichain: Unichain,
@@ -1393,6 +1392,7 @@ export async function ensureWalletOnBridgeChain(
 export const BRIDGE_FEE_CONFIG: Record<string, string> = {
   // Circle's fee per bridge (varies by chain pair, approximate)
   USDC: "0.00013",
+  EURC: "0.00013",
 };
 
 const BRIDGE_CUSTOM_FEE_AMOUNT_USDC =
@@ -1638,7 +1638,7 @@ async function createBridgeKitAdapter(): Promise<any> {
     });
 
     console.log("Bridge adapter created successfully with extended receipt timeout");
-    return withBridgeTransactionTimeouts(adapter);
+    return withBridgeTransactionTimeouts(withCircleChainAwareViemAdapter(adapter));
   } catch (error) {
     console.error("Failed to create bridge adapter:", error);
     throw new Error(
@@ -1718,7 +1718,7 @@ export async function createBridgeKitAdapterFromClients(
   console.log("Bridge adapter created from RainbowKit/wagmi clients", {
     chainId: walletClient.chain?.id ?? publicClient.chain?.id ?? chain?.id ?? chain,
   });
-  return withBridgeTransactionTimeouts(adapter);
+  return withBridgeTransactionTimeouts(withCircleChainAwareViemAdapter(adapter));
 }
 
 /**
@@ -1823,7 +1823,8 @@ async function initializeCircleSDK(): Promise<any> {
   try {
     appKitInstance = new AppKit({
       disableErrorReporting: true,
-    });
+      tokens: getCircleBridgeTokenRegistry(),
+    } as ConstructorParameters<typeof AppKit>[0]);
 
     console.log("Circle AppKit initialized successfully");
     return appKitInstance;
@@ -1913,6 +1914,7 @@ export async function bridgeTokens(
     const unavailableRouteError = getUnavailableCircleRouteError(
       request.fromChain,
       request.toChain,
+      request.token,
     );
     if (unavailableRouteError) {
       return {
@@ -2012,14 +2014,6 @@ export async function bridgeTokens(
     const toChainObj = CIRCLE_CHAIN_OBJECTS[request.toChain];
 
     if (!fromChainObj || !toChainObj) {
-      if (request.fromChain === "arc" || request.toChain === "arc") {
-        return {
-          success: false,
-          error:
-            "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.",
-        };
-      }
-
       return {
         success: false,
         error: `Chain objects not found for ${request.fromChain} or ${request.toChain}`,
@@ -2111,12 +2105,11 @@ export async function bridgeTokens(
       useForwarder,
     });
 
-    // Circle's AppKit only supports USDC bridging
-    // EURC bridging is not yet supported by Circle's bridge SDK
-    if (request.token && request.token !== "USDC") {
+    const tokenSymbol = (request.token || "USDC").toUpperCase();
+    if (tokenSymbol !== "USDC" && tokenSymbol !== "EURC") {
       return {
         success: false,
-        error: `${request.token} bridging is not yet supported. Only USDC can be bridged at this time.`,
+        error: `${request.token} bridging is not supported. Bridge USDC or EURC.`,
       };
     }
 
@@ -2201,7 +2194,13 @@ export async function bridgeTokens(
         from: { adapter: fromAdapter, chain: fromChainObj },
         to: bridgeDestination as any,
         amount: request.amount,
-        token: "USDC",
+        token: tokenSymbol,
+        invocationMeta: {
+          tokens: getCircleBridgeTokenRegistry({
+            arcMainnet:
+              request.fromChain === "arc" || request.toChain === "arc",
+          }),
+        },
         ...(customFee
           ? {
               config: {
@@ -2598,20 +2597,34 @@ export function getViemClient(chainId: string): PublicClient | null {
 export function isCircleBridgeRouteReady(
   fromChain: string,
   toChain: string,
+  tokenSymbol: string = "USDC",
 ): boolean {
-  return Boolean(CIRCLE_CHAIN_OBJECTS[fromChain] && CIRCLE_CHAIN_OBJECTS[toChain]);
+  if (!CIRCLE_CHAIN_OBJECTS[fromChain] || !CIRCLE_CHAIN_OBJECTS[toChain]) {
+    return false;
+  }
+
+  return (
+    isBridgeTokenSupportedOnChain(fromChain, tokenSymbol) &&
+    isBridgeTokenSupportedOnChain(toChain, tokenSymbol)
+  );
 }
 
 export function getUnavailableCircleRouteError(
   fromChain: string,
   toChain: string,
+  tokenSymbol: string = "USDC",
 ): string | null {
-  if (isCircleBridgeRouteReady(fromChain, toChain)) {
+  if (isCircleBridgeRouteReady(fromChain, toChain, tokenSymbol)) {
     return null;
   }
 
-  if (fromChain === "arc" || toChain === "arc") {
-    return "Arc mainnet CCTP is not available in Circle Bridge Kit yet. Choose another mainnet route until Arc is added.";
+  const symbol = tokenSymbol.toUpperCase();
+  if (symbol === "EURC") {
+    if (isSolanaBridgeChain(fromChain) || isSolanaBridgeChain(toChain)) {
+      return "EURC bridging is EVM-only. Circle CCTP expanded assets do not support Solana.";
+    }
+
+    return "EURC can be bridged between Ethereum, Base, and Arc on mainnet, or Ethereum Sepolia, Base Sepolia, and Arc Testnet.";
   }
 
   return "This bridge route is not available.";
@@ -2688,7 +2701,7 @@ export async function getBridgeFees(
  */
 export function getSupportedTokens(filterByChain?: string): SupportedToken[] {
   const chainEntries = Object.entries(SUPPORTED_CHAINS);
-  const chainAddresses = Object.fromEntries(
+  const usdcAddresses = Object.fromEntries(
     chainEntries.map(([id, config]) => [id, config.usdcAddress]),
   );
   const allTokens: SupportedToken[] = [
@@ -2697,8 +2710,16 @@ export function getSupportedTokens(filterByChain?: string): SupportedToken[] {
       name: "USD Coin",
       decimals: 6,
       chains: chainEntries.map(([id]) => id),
-      chainAddresses,
+      chainAddresses: usdcAddresses,
       logo: "/assets/usdc.svg",
+    },
+    {
+      symbol: "EURC",
+      name: "Euro Coin",
+      decimals: 6,
+      chains: Object.keys(BRIDGE_EURC_ADDRESSES),
+      chainAddresses: { ...BRIDGE_EURC_ADDRESSES },
+      logo: "/assets/eurc.svg",
     },
   ];
 

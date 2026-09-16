@@ -2,10 +2,10 @@
 import { Settings, Menu, X, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { HeaderWalletAvatar } from "@/components/wallet/TowerWalletAvatar";
+import ArcNetworkSwitcher from "@/components/ArcNetworkSwitcher";
 // import ThemeToggle from "@/components/ThemeToggle";
 import ThemeAwareImage from "@/components/ThemeAwareImage";
 
@@ -117,7 +117,6 @@ const Header = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileTradeDropdownOpen, setMobileTradeDropdownOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [arcDropdownOpen, setArcDropdownOpen] = useState(false);
   const [tradeDropdownOpen, setTradeDropdownOpen] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
@@ -303,78 +302,11 @@ const Header = () => {
             <Settings className="w-5 h-5 text-muted-foreground" />
           </motion.button>
 
-          {/* Arc Button - Mobile Only (no dropdown) */}
-          <motion.button
-            className="md:hidden flex items-center gap-2 px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <div className="w-5 h-5 rounded-full bg-primary/30 flex items-center justify-center">
-              <Image
-                src="/assets/ARCSvg.svg"
-                alt="Arc"
-                width={40}
-                height={40}
-                className="object-contain"
-              />
-            </div>
-            <span className="text-xs font-medium text-foreground">Arc</span>
-          </motion.button>
-
-          {/* Arc Dropdown Button - Desktop Only */}
-          <div className="hidden md:block relative">
-            <motion.button
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary hover:bg-secondary/80 transition-colors"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setArcDropdownOpen(!arcDropdownOpen)}
-            >
-              <div className="w-5 h-5 rounded-full bg-primary/30 flex items-center justify-center">
-                  <Image
-                    src="/assets/ARCSvg.svg"
-                    alt="Arc"
-                    width={40}
-                    height={40}
-                    className="object-contain"
-                  />
-              </div>
-              <span className="text-sm font-medium text-foreground">Arc</span>
-              <ChevronDown
-                className={`w-4 h-4 text-muted-foreground transition-transform ${
-                  arcDropdownOpen ? "rotate-180" : ""
-                }`}
-              />
-            </motion.button>
-
-            {/* Arc Dropdown Menu */}
-            <AnimatePresence>
-              {arcDropdownOpen && (
-                <>
-                  <div
-                    className="fixed inset-0 z-30"
-                    onClick={() => setArcDropdownOpen(false)}
-                  />
-                  <motion.div
-                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                    transition={{ duration: 0.12, ease: "easeOut" }}
-                    className="absolute right-0 mt-2 w-48 bg-card rounded-xl shadow-2xl z-40 overflow-hidden border border-border/70 backdrop-blur-md"
-                  >
-                    <div className="p-1.5">
-                      <button
-                        className="w-full text-left px-3.5 py-2 rounded-lg hover:bg-secondary transition-colors text-sm font-medium text-foreground"
-                        onClick={() => {
-                          setArcDropdownOpen(false);
-                        }}
-                      >
-                        Arc
-                      </button>
-                    </div>
-                  </motion.div>
-                </>
-              )}
-            </AnimatePresence>
+          <div className="md:hidden">
+            <ArcNetworkSwitcher compact />
+          </div>
+          <div className="hidden md:block">
+            <ArcNetworkSwitcher />
           </div>
 
           {/* Connect Wallet Button - Desktop */}

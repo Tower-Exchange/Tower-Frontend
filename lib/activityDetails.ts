@@ -34,7 +34,7 @@ export type TransactionInfoDetails = {
 };
 
 export const EXPLORER_URL_BY_NETWORK_NAME: Record<string, string> = {
-  Arc: "https://arc-scan.org/tx/",
+  Arc: "https://explorer.arc.io/tx/",
   "Arc Testnet": "https://testnet.arcscan.app/tx/",
   Base: "https://basescan.org/tx/",
   "Base Sepolia": "https://sepolia.basescan.org/tx/",

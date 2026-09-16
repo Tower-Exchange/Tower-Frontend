@@ -24,14 +24,13 @@ import SettingsModal from "@/components/SettingsModal";
 import useBridge from "@/lib/hooks/useBridge";
 import { SUPPORTED_CHAINS, ensureWalletOnBridgeChain, isCircleBridgeRouteReady, isValidAddress, normalizeWalletAddress } from "@/lib/bridgeService";
 import {
-  type BridgeNetworkMode,
+  DEFAULT_BRIDGE_CHAIN,
+  getBridgeTokenAddress,
   getBridgeTransactionUrl,
-  inferBridgeNetworkMode,
   isSolanaBridgeChain,
-  parseBridgeNetworkMode,
-  readStoredBridgeNetworkMode,
-  storeBridgeNetworkMode,
+  remapChainForNetwork,
 } from "@/lib/bridgeNetworks";
+import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
 import { BRIDGE_UI_CHAINS } from "@/lib/bridgeChainUi";
 import { registerBridgeActivity, registerBridgeFee } from "@/lib/supabase";
 import { BridgeErrorModal } from "@/components/BridgeErrorModal";
@@ -44,6 +43,7 @@ import TransactionStepsModal, {
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import usdcLogo from "@/public/assets/usdc.svg";
+import eurcLogo from "@/public/assets/eurc.svg";
 import { formatUsdAmount } from "@/lib/formatUsdAmount";
 import TokenInput from "@/components/reusable/TokenInput";
 
@@ -60,9 +60,6 @@ type BridgeChain = {
   name: string;
   logo?: StaticImageData;
 };
-
-type SupportedChainConfig =
-  (typeof SUPPORTED_CHAINS)[keyof typeof SUPPORTED_CHAINS];
 
 type BridgeStepsStep = "approve" | "burn" | "attestation" | "wait" | "mint";
 type BridgeStepsPhase = BridgeStepsStep | "success" | "failed";
@@ -162,21 +159,6 @@ const getBridgeStepStatus = (
   return isBridgeStepComplete(phase, step) ? "complete" : "pending";
 };
 
-const getBridgeTokenAddress = (
-  chainConfig: SupportedChainConfig,
-  tokenSymbol?: string,
-): string | null => {
-  if (tokenSymbol === "EURC" && "eurcAddress" in chainConfig) {
-    return typeof chainConfig.eurcAddress === "string"
-      ? chainConfig.eurcAddress
-      : null;
-  }
-
-  return typeof chainConfig.usdcAddress === "string"
-    ? chainConfig.usdcAddress
-    : null;
-};
-
 const BRIDGE_TOKENS: BridgeToken[] = [
   {
     symbol: "USDC",
@@ -185,11 +167,36 @@ const BRIDGE_TOKENS: BridgeToken[] = [
     usdPrice: 1,
     logo: usdcLogo,
   },
+  {
+    symbol: "EURC",
+    label: "EURC",
+    usdValue: "$1.08",
+    usdPrice: 1.08,
+    logo: eurcLogo,
+  },
 ];
 
 const BRIDGE_CHAINS: BridgeChain[] = BRIDGE_UI_CHAINS.map(
   ({ id, name, logo }) => ({ id, name, logo }),
 );
+
+const resolveBridgeToken = (
+  chainId: string,
+  symbol?: string | null,
+): BridgeToken => {
+  const requested = symbol
+    ? BRIDGE_TOKENS.find((token) => token.symbol === symbol)
+    : BRIDGE_TOKENS[0];
+  if (requested && getBridgeTokenAddress(chainId, requested.symbol)) {
+    return requested;
+  }
+
+  return (
+    BRIDGE_TOKENS.find((token) =>
+      getBridgeTokenAddress(chainId, token.symbol),
+    ) || BRIDGE_TOKENS[0]
+  );
+};
 
 export default function BridgePageContent({
   onNavigateToSwap,
@@ -215,18 +222,9 @@ export default function BridgePageContent({
   const [toToken, setToToken] = useState<BridgeToken | null>(null);
   const [fromChainId, setFromChainId] = useState<string | null>(null);
   const [toChainId, setToChainId] = useState<string | null>(null);
-  const [networkMode, setNetworkMode] = useState<BridgeNetworkMode>(() => {
-    if (typeof window === "undefined") {
-      return "testnet";
-    }
-
-    const params = new URLSearchParams(window.location.search);
-    return (
-      inferBridgeNetworkMode(params.get("fromChain"), params.get("toChain")) ||
-      parseBridgeNetworkMode(params.get("network")) ||
-      readStoredBridgeNetworkMode()
-    );
-  });
+  const { mode: networkMode, isReady: isNetworkModeReady } = useTowerNetworkMode();
+  const walletBalanceRequestIdRef = useRef(0);
+  const toChainBalanceRequestIdRef = useRef(0);
   const [slippageTolerance, setSlippageTolerance] = useState(0.5);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
@@ -354,35 +352,63 @@ export default function BridgePageContent({
   );
 
   useEffect(() => {
-    const fromChain = searchParams.get("fromChain");
-    const toChain = searchParams.get("toChain");
+    if (!isNetworkModeReady) {
+      return;
+    }
+
+    const fromChainParam = searchParams.get("fromChain");
+    const toChainParam = searchParams.get("toChain");
     const fromTokenParam = searchParams.get("fromToken");
     const toTokenParam = searchParams.get("toToken");
 
-    const selectedFromToken = fromTokenParam
-      ? BRIDGE_TOKENS.find((t) => t.symbol === fromTokenParam)
-      : BRIDGE_TOKENS[0];
-    const selectedToToken = toTokenParam
-      ? BRIDGE_TOKENS.find((t) => t.symbol === toTokenParam)
-      : BRIDGE_TOKENS[0];
+    setFromChainId((previous) => {
+      const source =
+        fromChainParam || previous || DEFAULT_BRIDGE_CHAIN[networkMode];
+      return (
+        remapChainForNetwork(source, networkMode) ||
+        DEFAULT_BRIDGE_CHAIN[networkMode]
+      );
+    });
 
-    if (fromChain) {
-      setFromToken(selectedFromToken || BRIDGE_TOKENS[0]);
-      setFromChainId(fromChain);
-    }
-    if (toChain) {
-      setToToken(selectedToToken || BRIDGE_TOKENS[0]);
-      setToChainId(toChain);
-    }
+    setToChainId((previous) => {
+      const source = toChainParam || previous;
+      if (!source) {
+        return previous;
+      }
 
-    const inferredMode =
-      inferBridgeNetworkMode(fromChain, toChain) ||
-      parseBridgeNetworkMode(searchParams.get("network"));
-    if (inferredMode) {
-      setNetworkMode(inferredMode);
-      storeBridgeNetworkMode(inferredMode);
+      const remapped = remapChainForNetwork(source, networkMode);
+      return remapped && remapped !== "all" ? remapped : previous;
+    });
+
+    const resolvedFromChain =
+      remapChainForNetwork(fromChainParam, networkMode) ||
+      DEFAULT_BRIDGE_CHAIN[networkMode];
+    const resolvedToChain = remapChainForNetwork(toChainParam, networkMode);
+
+    setFromToken((previous) =>
+      resolveBridgeToken(resolvedFromChain, fromTokenParam || previous?.symbol),
+    );
+
+    if (toTokenParam && resolvedToChain && resolvedToChain !== "all") {
+      setToToken(resolveBridgeToken(resolvedToChain, toTokenParam));
+    } else if (!toTokenParam) {
+      setToToken((previous) => {
+        if (!previous) {
+          return null;
+        }
+
+        if (resolvedToChain && resolvedToChain !== "all") {
+          return getBridgeTokenAddress(resolvedToChain, previous.symbol)
+            ? previous
+            : null;
+        }
+
+        return previous;
+      });
+    } else {
+      setToToken(null);
     }
-  }, [searchParams]);
+  }, [isNetworkModeReady, networkMode, searchParams]);
 
   const openChainSelect = useCallback(
     (side: "from" | "to") => {
@@ -438,10 +464,10 @@ export default function BridgePageContent({
     }
 
     previousToChainIdRef.current = toChainId;
-  }, [toChainId, receivingAddress]);
+  }, [receivingAddress, toChainId]);
 
   const fetchWalletBalance = useCallback(async () => {
-    if (!fromChainId || !fromToken) {
+    if (!isNetworkModeReady || !fromChainId || !fromToken) {
       setWalletBalance("0.00");
       return;
     }
@@ -461,11 +487,14 @@ export default function BridgePageContent({
       return;
     }
 
+    const requestId = ++walletBalanceRequestIdRef.current;
+    setWalletBalance("0.00");
+
     try {
       const chainConfig =
         SUPPORTED_CHAINS[fromChainId as keyof typeof SUPPORTED_CHAINS];
       if (!chainConfig) return;
-      const tokenAddress = getBridgeTokenAddress(chainConfig, fromToken?.symbol);
+      const tokenAddress = getBridgeTokenAddress(fromChainId, fromToken?.symbol);
       if (!tokenAddress) {
         setWalletBalance("0.00");
         return;
@@ -476,25 +505,37 @@ export default function BridgePageContent({
         body: JSON.stringify({
           address: sourceAddress,
           chainId: fromChainId,
-          rpcUrl: chainConfig.rpcUrl,
           tokenAddress,
         }),
       });
       if (!response.ok) throw new Error("Failed to fetch balance");
       const data = await response.json();
+      if (requestId !== walletBalanceRequestIdRef.current) {
+        return;
+      }
       setWalletBalance(data.balance || "0.00");
     } catch (error) {
+      if (requestId !== walletBalanceRequestIdRef.current) {
+        return;
+      }
       console.error("Error fetching wallet balance:", error);
       setWalletBalance("0.00");
     }
-  }, [getBridgeAddressForChain, isSolanaConnected, user?.wallet?.address, fromChainId, fromToken]);
+  }, [
+    getBridgeAddressForChain,
+    isNetworkModeReady,
+    isSolanaConnected,
+    user?.wallet?.address,
+    fromChainId,
+    fromToken,
+  ]);
 
   useEffect(() => {
     fetchWalletBalance();
   }, [fetchWalletBalance]);
 
   const fetchToChainBalance = useCallback(async () => {
-    if (!toChainId || !toToken) {
+    if (!isNetworkModeReady || !toChainId || !toToken) {
       setToChainBalance("0.00");
       return;
     }
@@ -509,11 +550,14 @@ export default function BridgePageContent({
       return;
     }
 
+    const requestId = ++toChainBalanceRequestIdRef.current;
+    setToChainBalance("0.00");
+
     try {
       const chainConfig =
         SUPPORTED_CHAINS[toChainId as keyof typeof SUPPORTED_CHAINS];
       if (!chainConfig) return;
-      const tokenAddress = getBridgeTokenAddress(chainConfig, toToken?.symbol);
+      const tokenAddress = getBridgeTokenAddress(toChainId, toToken?.symbol);
       if (!tokenAddress) {
         setToChainBalance("0.00");
         return;
@@ -524,18 +568,29 @@ export default function BridgePageContent({
         body: JSON.stringify({
           address: destinationAddress,
           chainId: toChainId,
-          rpcUrl: chainConfig.rpcUrl,
           tokenAddress,
         }),
       });
       if (!response.ok) throw new Error("Failed to fetch balance");
       const data = await response.json();
+      if (requestId !== toChainBalanceRequestIdRef.current) {
+        return;
+      }
       setToChainBalance(data.balance || "0.00");
     } catch (error) {
+      if (requestId !== toChainBalanceRequestIdRef.current) {
+        return;
+      }
       console.error("Error fetching destination chain balance:", error);
       setToChainBalance("0.00");
     }
-  }, [getDestinationBridgeAddress, user?.wallet?.address, toChainId, toToken]);
+  }, [
+    getDestinationBridgeAddress,
+    isNetworkModeReady,
+    user?.wallet?.address,
+    toChainId,
+    toToken,
+  ]);
 
   useEffect(() => {
     fetchToChainBalance();
@@ -832,17 +887,11 @@ export default function BridgePageContent({
         toChainId ||
         "";
       const tokenSymbol = fromToken?.symbol || "USDC";
-      const fromChainConfig = fromChainId
-        ? SUPPORTED_CHAINS[fromChainId as keyof typeof SUPPORTED_CHAINS]
+      const sourceTokenAddress = fromChainId
+        ? getBridgeTokenAddress(fromChainId, tokenSymbol)
         : null;
-      const toChainConfig = toChainId
-        ? SUPPORTED_CHAINS[toChainId as keyof typeof SUPPORTED_CHAINS]
-        : null;
-      const sourceTokenAddress = fromChainConfig
-        ? getBridgeTokenAddress(fromChainConfig, tokenSymbol)
-        : null;
-      const destinationTokenAddress = toChainConfig
-        ? getBridgeTokenAddress(toChainConfig, tokenSymbol)
+      const destinationTokenAddress = toChainId
+        ? getBridgeTokenAddress(toChainId, tokenSymbol)
         : null;
       const bridgeFeeRecipientAddress = bridgeHook.customFeeEnabled
         ? isSolanaBridgeChain(fromChainId)
@@ -967,7 +1016,7 @@ export default function BridgePageContent({
   ]);
 
   const fromDisplayToken = fromToken ?? BRIDGE_TOKENS[0];
-  const toDisplayToken = toToken ?? BRIDGE_TOKENS[0];
+  const toDisplayToken = toToken;
   const sourceBridgeAddress =
     isSolanaBridgeChain(fromChainId)
       ? isSolanaConnected
@@ -1007,11 +1056,16 @@ export default function BridgePageContent({
     fromChainId &&
       toChainId &&
       fromChainId !== toChainId &&
-      !isCircleBridgeRouteReady(fromChainId, toChainId),
+      !isCircleBridgeRouteReady(
+        fromChainId,
+        toChainId,
+        fromToken?.symbol || toToken?.symbol || "USDC",
+      ),
   );
   const isBridgeActionDisabled =
     !fromChainId ||
     !toChainId ||
+    !toToken ||
     !fromAmount ||
     parseFloat(fromAmount) <= 0 ||
     isDestinationAddressMissing ||
@@ -1043,7 +1097,7 @@ export default function BridgePageContent({
   );
   const toUsdValueLabel = formatUsdAmount(
     toAmount,
-    toToken?.usdPrice ?? toDisplayToken.usdPrice,
+    toToken?.usdPrice ?? 0,
   );
 
   const handleConnectWallet = async () => {
@@ -1103,8 +1157,8 @@ export default function BridgePageContent({
     }
 
     if (isCctpUnavailable) {
-      return fromChainId === "arc" || toChainId === "arc"
-        ? "Arc CCTP unavailable"
+      return fromToken?.symbol === "EURC" || toToken?.symbol === "EURC"
+        ? "EURC route unavailable"
         : "Route unavailable";
     }
 
@@ -1419,7 +1473,7 @@ export default function BridgePageContent({
                     )}
                   </span>
                   <span className="font-medium text-foreground">
-                    {fromToken ? fromToken.label : "Select"}
+                    {fromToken ? fromToken.label : "Select Token"}
                   </span>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </motion.button>
@@ -1474,32 +1528,34 @@ export default function BridgePageContent({
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <span className="relative inline-flex h-6 w-6 items-center justify-center">
-                    <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/30 overflow-hidden">
-                      {toToken?.logo && (
-                        <Image
-                          src={toToken.logo}
-                          alt={`${toToken.symbol} logo`}
-                          width={24}
-                          height={24}
-                          className="object-contain w-full h-full"
-                        />
+                  {toToken || toChain ? (
+                    <span className="relative inline-flex h-6 w-6 items-center justify-center">
+                      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-primary/30 overflow-hidden">
+                        {toToken?.logo && (
+                          <Image
+                            src={toToken.logo}
+                            alt={`${toToken.symbol} logo`}
+                            width={24}
+                            height={24}
+                            className="object-contain w-full h-full"
+                          />
+                        )}
+                      </span>
+                      {toChain?.logo && (
+                        <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[#1d212b] bg-[#1d212b] overflow-hidden">
+                          <Image
+                            src={toChain.logo}
+                            alt={`${toChain.name} logo`}
+                            width={12}
+                            height={12}
+                            className="h-full w-full rounded-full object-cover"
+                          />
+                        </span>
                       )}
                     </span>
-                    {toChain?.logo && (
-                      <span className="absolute -bottom-1 -right-1 inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-[#1d212b] bg-[#1d212b] overflow-hidden">
-                        <Image
-                          src={toChain.logo}
-                          alt={`${toChain.name} logo`}
-                          width={12}
-                          height={12}
-                          className="h-full w-full rounded-full object-cover"
-                        />
-                      </span>
-                    )}
-                  </span>
-                  <span className="font-medium text-foreground">
-                    {toToken ? toToken.label : "Select"}
+                  ) : null}
+                  <span className={`font-medium ${toToken ? "text-foreground" : "text-muted-foreground"}`}>
+                    {toToken ? toToken.label : "Select Token"}
                   </span>
                   <ChevronDown className="w-4 h-4 text-muted-foreground" />
                 </motion.button>
@@ -1570,7 +1626,7 @@ export default function BridgePageContent({
           </motion.div>
 
           <div className="mt-4 flex items-center justify-center gap-4">
-            {[fromDisplayToken, toDisplayToken].map((token, idx) => (
+            {[fromDisplayToken, ...(toDisplayToken ? [toDisplayToken] : [])].map((token, idx) => (
               <motion.div
                 key={`${token.symbol}-${idx}`}
                 className="flex items-center gap-2 rounded-full border border-border bg-[#191A1C] px-6 py-3"

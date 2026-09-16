@@ -41,7 +41,7 @@ module.exports = {
       timeout: 60000,
     },
     "arc-mainnet": {
-      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.arc-scan.org",
+      url: process.env.ARC_MAINNET_RPC_URL || "https://rpc.mainnet.arc.io",
       accounts: process.env.PRIVATE_KEY ? [process.env.PRIVATE_KEY] : [],
       chainId: 5042,
       timeout: 180000,

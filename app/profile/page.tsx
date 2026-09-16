@@ -7,7 +7,13 @@ import TokenTicker from "@/components/TokenTicker";
 import Positions from "@/components/Positions";
 import Activities from "@/components/Activities";
 import Badges from "@/components/Badges";
-import { ARC_ADD_NETWORK_PARAMS, ARC_CHAIN_HEX } from "@/lib/arcNetwork";
+import {
+  getArcNetworkHex,
+  getArcNetworkLabel,
+  normalizeArcChainHex,
+} from "@/lib/arcNetwork";
+import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
+import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
 import { uploadProfilePicture, saveProfileData, loadProfileData } from "@/lib/profileService";
 import { AppErrorModal } from "@/components/AppErrorModal";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
@@ -41,6 +47,7 @@ const ProfileContent = () => {
   const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState<ProfileTab>("positions");
   const { authenticated, user } = useRainbowKitAuth();
+  const { mode: arcNetworkMode } = useTowerNetworkMode();
   const [chainId, setChainId] = useState<string | null>(null);
   const [totalPortfolioValue, setTotalPortfolioValue] = useState("$0.00");
   const [profilePictureUrl, setProfilePictureUrl] = useState<string | null>(null);
@@ -137,7 +144,11 @@ const ProfileContent = () => {
     };
   }, [user?.wallet?.address]);
 
-  const isOnArcTestnet = chainId === ARC_CHAIN_HEX;
+  const isOnSelectedArc =
+    chainId != null &&
+    normalizeArcChainHex(chainId) ===
+      normalizeArcChainHex(getArcNetworkHex(arcNetworkMode));
+  const selectedArcLabel = getArcNetworkLabel(arcNetworkMode);
   const displayAddress = useMemo(() => {
     const addr = user?.wallet?.address;
     if (!addr) return null;
@@ -167,15 +178,10 @@ const ProfileContent = () => {
   };
 
   const handleAddArcNetwork = async () => {
-    const ethereum = typeof window === "undefined" ? undefined : (window as EthereumWindow).ethereum;
-    if (!ethereum) return;
     try {
-      await ethereum.request?.({
-        method: "wallet_addEthereumChain",
-        params: ARC_ADD_NETWORK_PARAMS,
-      });
+      await ensureWalletOnArcNetwork(arcNetworkMode);
     } catch (error) {
-      console.error("Error adding Arc Testnet to wallet:", error);
+      console.error(`Error adding ${selectedArcLabel} to wallet:`, error);
     }
   };
 
@@ -320,13 +326,13 @@ const ProfileContent = () => {
                 )}
               </div>
 
-              {!isOnArcTestnet && (
+              {!isOnSelectedArc && (
                 <div className="mb-3">
                   <button
                     onClick={handleAddArcNetwork}
                     className="text-xs px-3 py-1.5 rounded-lg bg-primary text-black font-semibold hover:opacity-90 transition"
                   >
-                    Add Arc Testnet
+                    Switch to {selectedArcLabel}
                   </button>
                 </div>
               )}

@@ -150,10 +150,17 @@ const arcMainnet = {
     symbol: "USDC",
   },
   rpcUrls: {
-    default: { http: ["https://rpc.arc-scan.org"] },
+    default: {
+      http: [
+        "https://rpc.mainnet.arc.io",
+        "https://rpc.blockdaemon.mainnet.arc.io",
+        "https://rpc.drpc.mainnet.arc.io",
+        "https://rpc.quicknode.mainnet.arc.io",
+      ],
+    },
   },
   blockExplorers: {
-    default: { name: "ArcScan", url: "https://arc-scan.org" },
+    default: { name: "Arc Explorer", url: "https://explorer.arc.io" },
   },
   testnet: false,
 } as const;

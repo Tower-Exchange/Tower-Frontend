@@ -4,10 +4,15 @@
 
 import { getBrowserWalletProvider } from "@/lib/browser-wallet";
 import {
-  ARC_ADD_NETWORK_PARAMS,
-  ARC_CHAIN_HEX,
+  ARC_NETWORK_CHAIN_ID,
   TOKEN_CONTRACTS,
+  getArcNetworkHex,
+  getArcNetworkLabel,
+  normalizeArcChainHex,
 } from "@/lib/arcNetwork";
+import { getArcRpcProxyPath } from "@/lib/arcRpc";
+import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
+import { readStoredBridgeNetworkMode } from "@/lib/bridgeNetworks";
 import { ensureWalletSession } from "@/lib/walletSessionClient";
 
 export interface ApprovalTransactionData {
@@ -71,10 +76,11 @@ interface RpcTransactionReceipt {
   [key: string]: unknown;
 }
 
-/**
- * Arc testnet RPC endpoint
- */
-const ARC_RPC_URL = "/api/rpc/5042002";
+const getSelectedArcRpcUrl = () =>
+  getArcRpcProxyPath(readStoredBridgeNetworkMode());
+
+const getSelectedArcChainId = () =>
+  ARC_NETWORK_CHAIN_ID[readStoredBridgeNetworkMode()];
 
 type JsonRpcResponse<T> = {
   result?: T;
@@ -87,7 +93,7 @@ const callArcRpc = async <T,>(
   method: string,
   params: unknown[],
 ): Promise<T> => {
-  const response = await fetch(ARC_RPC_URL, {
+  const response = await fetch(getSelectedArcRpcUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -139,52 +145,19 @@ const applyGasBuffer = (gasEstimate: string) =>
 const getArcLatestNonce = (address: string) =>
   callArcRpc<string>("eth_getTransactionCount", [address, "latest"]);
 
-const getWalletErrorCode = (error: unknown) =>
-  error && typeof error === "object" && "code" in error
-    ? (error as { code?: number }).code
-    : undefined;
-
-const ensureArcTestnet = async (
+const ensureSelectedArcNetwork = async (
   provider: ReturnType<typeof getBrowserWalletProvider>,
 ) => {
-  try {
-    try {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: ARC_ADD_NETWORK_PARAMS,
-      });
-    } catch (addOrUpdateError) {
-      if (getWalletErrorCode(addOrUpdateError) === 4001) {
-        throw new Error(
-          "Please approve the Arc Testnet RPC update in your wallet before swapping.",
-        );
-      }
-
-      console.warn("Unable to refresh Arc Testnet RPC config:", addOrUpdateError);
-    }
-
-    await provider.request({
-      method: "wallet_switchEthereumChain",
-      params: [{ chainId: ARC_CHAIN_HEX }],
-    });
-  } catch (switchError) {
-    if (getWalletErrorCode(switchError) === 4902) {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: ARC_ADD_NETWORK_PARAMS,
-      });
-      await provider.request({
-        method: "wallet_switchEthereumChain",
-        params: [{ chainId: ARC_CHAIN_HEX }],
-      });
-    } else {
-      throw switchError;
-    }
-  }
+  const mode = readStoredBridgeNetworkMode();
+  await ensureWalletOnArcNetwork(mode);
 
   const currentChainId = await provider.request({ method: "eth_chainId" });
-  if (currentChainId !== ARC_CHAIN_HEX) {
-    throw new Error("Please switch to Arc Testnet to continue");
+  if (
+    typeof currentChainId !== "string" ||
+    normalizeArcChainHex(currentChainId) !==
+      normalizeArcChainHex(getArcNetworkHex(mode))
+  ) {
+    throw new Error(`Please switch to ${getArcNetworkLabel(mode)} to continue`);
   }
 };
 
@@ -245,7 +218,7 @@ const withTransactionDefaults = (
   value: tx.value ?? "0",
   from: tx.from ?? walletAddress,
   gasLimit: tx.gasLimit ?? "500000",
-  chainId: tx.chainId ?? parentTransaction.chainId ?? 5042002,
+  chainId: tx.chainId ?? parentTransaction.chainId ?? getSelectedArcChainId(),
   inputToken: tx.inputToken ?? parentTransaction.inputToken,
   outputToken: tx.outputToken ?? parentTransaction.outputToken,
 });
@@ -268,7 +241,7 @@ export const getErc20TokenBalance = async (
     throw new Error(`Invalid token address: ${tokenAddress}`);
   }
 
-  const response = await fetch(ARC_RPC_URL, {
+  const response = await fetch(getSelectedArcRpcUrl(), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -424,7 +397,7 @@ export const signTransactionWithWallet = async (
 
     // Get the active injected wallet provider from the browser
     const provider = getBrowserWalletProvider();
-    await ensureArcTestnet(provider);
+    await ensureSelectedArcNetwork(provider);
     const walletTxValue = getWalletTransactionValue(transaction);
 
     console.log("Validated transaction. Attempting to sign with browser wallet:", {
@@ -555,7 +528,7 @@ export const broadcastTransaction = async (
 
     console.log("Broadcasting transaction to Arc network");
 
-    const response = await fetch(ARC_RPC_URL, {
+    const response = await fetch(getSelectedArcRpcUrl(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -650,7 +623,7 @@ const getTransactionReceipt = async (
   transactionHash: string
 ): Promise<RpcTransactionReceipt | null> => {
   try {
-    const response = await fetch(ARC_RPC_URL, {
+    const response = await fetch(getSelectedArcRpcUrl(), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
