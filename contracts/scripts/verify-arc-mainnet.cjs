@@ -46,8 +46,15 @@ async function main() {
     "deployments",
     "tower-dex-adapter-arc-mainnet-deployment.json",
   );
+  const aeroAdapterFile = path.join(
+    __dirname,
+    "..",
+    "deployments",
+    "aero-adapter-arc-mainnet-deployment.json",
+  );
   const executorSaved = readJson(executorFile);
   const adapterSaved = readJson(adapterFile);
+  const aeroAdapterSaved = readJson(aeroAdapterFile);
 
   const executorAddress = pickAddress(
     process.env.TOWER_SWAP_EXECUTOR_ADDRESS,
@@ -97,6 +104,22 @@ async function main() {
     license: "MIT",
   });
 
+  const aeroAdapterAddress =
+    process.env.AERO_ADAPTER_ADDRESS || aeroAdapterSaved?.adapter;
+  const aeroSwapRouter =
+    process.env.AERO_SWAP_ROUTER_ADDRESS ||
+    aeroAdapterSaved?.swapRouter ||
+    "0xb4702E1375F712da2e0d5F534c30c0c1513EdB2B";
+  if (hre.ethers.isAddress(aeroAdapterAddress || "")) {
+    results.aeroAdapter = await verifyOnArcscan(hre, {
+      address: aeroAdapterAddress,
+      constructorArguments: [aeroSwapRouter],
+      contract: "contracts/adapters/AeroAdapter.sol:AeroAdapter",
+      label: "AeroAdapter",
+      license: "MIT",
+    });
+  }
+
   if (executorSaved) {
     writeJson(executorFile, {
       ...executorSaved,
@@ -107,6 +130,12 @@ async function main() {
     writeJson(adapterFile, {
       ...adapterSaved,
       verificationStatus: results.adapter,
+    });
+  }
+  if (aeroAdapterSaved && results.aeroAdapter) {
+    writeJson(aeroAdapterFile, {
+      ...aeroAdapterSaved,
+      verificationStatus: results.aeroAdapter,
     });
   }
 
@@ -120,7 +149,7 @@ async function main() {
   );
   if (unfinished.includes("unavailable")) {
     console.log(
-      "Sourcify has not listed Arc mainnet (5042) yet. Re-run this command after it is listed.",
+      "Arc Explorer could not verify yet. Re-run this command, or submit Standard JSON at https://explorer.arc.io",
     );
   }
   if (unfinished.length > 0) {

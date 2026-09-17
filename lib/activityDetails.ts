@@ -1,5 +1,9 @@
 import { type StaticImageData } from "next/image";
 import { type ActivityRow } from "@/lib/supabase";
+import {
+  ARC_MAINNET_EXPLORER_URL,
+  ARC_TESTNET_EXPLORER_URL,
+} from "@/lib/arcNetwork";
 import { getTokenIcon } from "@/lib/tokenIcons";
 import { getChainLogoByName } from "@/lib/chains";
 import { SUPPORTED_CHAINS } from "@/lib/bridgeService";
@@ -34,8 +38,9 @@ export type TransactionInfoDetails = {
 };
 
 export const EXPLORER_URL_BY_NETWORK_NAME: Record<string, string> = {
-  Arc: "https://explorer.arc.io/tx/",
-  "Arc Testnet": "https://testnet.arcscan.app/tx/",
+  Arc: `${ARC_MAINNET_EXPLORER_URL}/tx/`,
+  "Arc Mainnet": `${ARC_MAINNET_EXPLORER_URL}/tx/`,
+  "Arc Testnet": `${ARC_TESTNET_EXPLORER_URL}/tx/`,
   Base: "https://basescan.org/tx/",
   "Base Sepolia": "https://sepolia.basescan.org/tx/",
   Optimism: "https://optimistic.etherscan.io/tx/",
@@ -64,7 +69,10 @@ export const getActivityExplorerUrl = (row: ActivityRow) => {
   }
 
   if (row.type.toLowerCase().includes("swap")) {
-    return `https://testnet.arcscan.app/tx/${row.transaction_hash}`;
+    const explorerBaseUrl =
+      EXPLORER_URL_BY_NETWORK_NAME[row.source_network_name] ||
+      `${ARC_MAINNET_EXPLORER_URL}/tx/`;
+    return `${explorerBaseUrl}${row.transaction_hash}`;
   }
 
   const preferredNetwork = row.destination_network_name || row.source_network_name;

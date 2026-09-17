@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { HeaderWalletAvatar } from "@/components/wallet/TowerWalletAvatar";
-import ArcNetworkSwitcher from "@/components/ArcNetworkSwitcher";
 // import ThemeToggle from "@/components/ThemeToggle";
 import ThemeAwareImage from "@/components/ThemeAwareImage";
 
@@ -301,13 +300,6 @@ const Header = () => {
           >
             <Settings className="w-5 h-5 text-muted-foreground" />
           </motion.button>
-
-          <div className="md:hidden">
-            <ArcNetworkSwitcher compact />
-          </div>
-          <div className="hidden md:block">
-            <ArcNetworkSwitcher />
-          </div>
 
           {/* Connect Wallet Button - Desktop */}
           <motion.div

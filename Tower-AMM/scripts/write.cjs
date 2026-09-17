@@ -13,33 +13,121 @@ try {
 
 const DEFAULT_RPC_URL = "https://rpc.testnet.arc.network";
 const DEFAULT_DEADLINE_MINUTES = 20;
+const MAINNET_FACTORY = "0x49Aa1C63EA4E126a88E27A2A7673e6d31D954A3C";
 
-const TOKENS = {
+const TESTNET_TOKENS = {
   USDC: {
-    address: process.env.USDC_ADDRESS || "0x3600000000000000000000000000000000000000",
+    address: "0x3600000000000000000000000000000000000000",
     decimals: 6,
   },
   EURC: {
-    address: process.env.EURC_ADDRESS || "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
+    address: "0x89B50855Aa3bE2F677cD6303Cec089B5F319D72a",
     decimals: 6,
   },
   USDT: {
-    address: process.env.USDT_ADDRESS || "0x175CdB1D338945f0D851A741ccF787D343E57952",
+    address: "0x175CdB1D338945f0D851A741ccF787D343E57952",
     decimals: 18,
   },
   CIRBTC: {
-    address: process.env.CIRBTC_ADDRESS || "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
+    address: "0xf0C4a4CE82A5746AbAAd9425360Ab04fbBA432BF",
     decimals: 8,
   },
   CNGN: {
-    address: process.env.CNGN_ADDRESS || "0x9a9c18A371d98200FE910f62c45875f1abb68d20",
+    address: "0x9a9c18A371d98200FE910f62c45875f1abb68d20",
     decimals: 6,
   },
   QCAD: {
-    address: process.env.QCAD_ADDRESS || "0x23d7CFFd0876f3ABb6B074287ba2aeefBc83825d",
+    address: "0x23d7CFFd0876f3ABb6B074287ba2aeefBc83825d",
     decimals: 6,
   },
 };
+
+const MAINNET_TOKENS = {
+  USDC: {
+    address: "0x3600000000000000000000000000000000000000",
+    decimals: 6,
+  },
+  EURC: {
+    address: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+    decimals: 6,
+  },
+  CIRBTC: {
+    address: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+    decimals: 8,
+  },
+};
+
+function rpcUrl() {
+  return (
+    process.env.ARC_RPC_URL ||
+    process.env.ARC_MAINNET_RPC_URL ||
+    process.env.ARC_TESTNET_RPC_URL ||
+    DEFAULT_RPC_URL
+  );
+}
+
+function useMainnetTokens() {
+  const network = String(
+    process.env.HARDHAT_NETWORK || process.env.ARC_NETWORK || "",
+  ).toLowerCase();
+  if (network.includes("mainnet")) {
+    return true;
+  }
+  if (/mainnet\.arc\.io/i.test(rpcUrl())) {
+    return true;
+  }
+  const factory = String(process.env.TOWER_FACTORY_ADDRESS || "").toLowerCase();
+  return factory === MAINNET_FACTORY.toLowerCase();
+}
+
+function tokenCatalog() {
+  const defaults = useMainnetTokens() ? MAINNET_TOKENS : TESTNET_TOKENS;
+  return {
+    USDC: {
+      address: process.env.USDC_ADDRESS || defaults.USDC.address,
+      decimals: 6,
+    },
+    EURC: {
+      address: process.env.EURC_ADDRESS || defaults.EURC.address,
+      decimals: 6,
+    },
+    ...(defaults.USDT
+      ? {
+          USDT: {
+            address: process.env.USDT_ADDRESS || defaults.USDT.address,
+            decimals: 18,
+          },
+        }
+      : process.env.USDT_ADDRESS
+        ? {
+            USDT: {
+              address: process.env.USDT_ADDRESS,
+              decimals: 18,
+            },
+          }
+        : {}),
+    CIRBTC: {
+      address: process.env.CIRBTC_ADDRESS || defaults.CIRBTC.address,
+      decimals: 8,
+    },
+    ...(defaults.CNGN
+      ? {
+          CNGN: {
+            address: process.env.CNGN_ADDRESS || defaults.CNGN.address,
+            decimals: 6,
+          },
+        }
+      : {}),
+    ...(defaults.QCAD
+      ? {
+          QCAD: {
+            address: process.env.QCAD_ADDRESS || defaults.QCAD.address,
+            decimals: 6,
+          },
+        }
+      : {}),
+  };
+}
 
 const FACTORY_ABI = [
   "function createPair(address tokenA, address tokenB) external returns (address pair)",
@@ -144,12 +232,14 @@ function normalizeBoolean(value) {
 function resolveToken(rawToken) {
   const normalized = String(rawToken).trim();
   const upper = normalized.toUpperCase();
+  const tokens = tokenCatalog();
+  const token = tokens[upper] || (upper === "CIRBTC" ? tokens.CIRBTC : null);
 
-  if (TOKENS[upper]) {
+  if (token) {
     return {
-      symbol: upper,
-      address: TOKENS[upper].address,
-      decimals: TOKENS[upper].decimals,
+      symbol: upper === "CIRBTC" ? "CIRBTC" : upper,
+      address: token.address,
+      decimals: token.decimals,
     };
   }
 
@@ -277,9 +367,7 @@ async function submitAndWait(txPromise, label) {
 }
 
 async function getContext() {
-  const provider = new ethers.JsonRpcProvider(
-    process.env.ARC_TESTNET_RPC_URL || DEFAULT_RPC_URL,
-  );
+  const provider = new ethers.JsonRpcProvider(rpcUrl());
   const signer = new ethers.Wallet(requireEnv("PRIVATE_KEY"), provider);
   const factoryAddress = requireEnv("TOWER_FACTORY_ADDRESS");
   const routerAddress = requireEnv("TOWER_ROUTER_ADDRESS");

@@ -203,18 +203,7 @@ export const inferBridgeNetworkMode = (
 ): BridgeNetworkMode | null =>
   getBridgeNetworkMode(fromChain) || getBridgeNetworkMode(toChain);
 
-export const readStoredBridgeNetworkMode = (): BridgeNetworkMode => {
-  if (typeof window === "undefined") {
-    return "testnet";
-  }
-
-  try {
-    const stored = window.sessionStorage.getItem(BRIDGE_NETWORK_STORAGE_KEY);
-    return stored === "mainnet" ? "mainnet" : "testnet";
-  } catch {
-    return "testnet";
-  }
-};
+export const readStoredBridgeNetworkMode = (): BridgeNetworkMode => "mainnet";
 
 export const TOWER_NETWORK_MODE_EVENT = "tower-network-mode";
 

@@ -18,7 +18,9 @@ const isTransientRpcError = (error) => {
     /timeout/i.test(message) ||
     /econnreset/i.test(message) ||
     /etimedout/i.test(message) ||
-    /socket hang up/i.test(message)
+    /socket hang up/i.test(message) ||
+    /und_err_socket/i.test(message) ||
+    /other side closed/i.test(message)
   );
 };
 

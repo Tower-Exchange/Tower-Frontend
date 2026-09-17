@@ -193,17 +193,9 @@ contract TowerSwapExecutor is Ownable, Pausable, ReentrancyGuard {
         address target,
         bytes calldata data
     ) private returns (bool success, bytes memory returnData) {
-        assembly {
-            success := call(gas(), target, 0, data.offset, data.length, 0, 0)
-
-            if iszero(success) {
-                let size := returndatasize()
-                returnData := mload(0x40)
-                mstore(returnData, size)
-                returndatacopy(add(returnData, 0x20), 0, size)
-                mstore(0x40, add(add(returnData, 0x20), and(add(size, 0x1f), not(0x1f))))
-            }
-        }
+        // Copy to memory first. Passing nested calldata bytes via data.offset in
+        // assembly is unreliable with viaIR and surfaces as "Route execution failed".
+        (success, returnData) = target.call(data);
     }
 
     function _getRevertMsg(bytes memory returnData) private pure returns (string memory) {

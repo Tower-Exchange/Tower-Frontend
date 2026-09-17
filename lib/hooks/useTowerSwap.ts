@@ -119,7 +119,8 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
       outputToken: string,
       inputAmount: string,
       slippageTolerance: number = 50, // 0.5% default
-      dexId?: string
+      dexId?: string,
+      chainId?: number,
     ): Promise<SwapQuote | null> => {
       setIsLoading(true);
       setError(null);
@@ -132,6 +133,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           inputAmount,
           slippageTolerance,
           dexId,
+          chainId,
         });
 
         const response = await fetch(`${swapApiBaseUrl}/quote`, {
@@ -145,6 +147,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
             inputAmount,
             slippageTolerance,
             dexId,
+            chainId,
           }),
         });
 

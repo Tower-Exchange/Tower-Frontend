@@ -6,6 +6,7 @@ import {
   TOWER_DEX_ID,
   TOWER_DEX_NAME,
 } from "@/lib/towerDex";
+import { getAeroDexInfo, AERO_DEX_ID, AERO_DEX_NAME } from "@/lib/aeroDex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
@@ -67,6 +68,13 @@ const getCanonicalTowerDex = (): DexInfo => ({
   enabled: isTowerDexEnabled(),
 });
 
+const getCanonicalAeroDex = (): DexInfo => ({
+  ...getAeroDexInfo(),
+  id: AERO_DEX_ID,
+  name: AERO_DEX_NAME,
+  enabled: true,
+});
+
 const isExecutorUnsupportedDexId = (id: string) =>
   id === "unitflow" && !UNITFLOW_EXECUTOR_ENABLED;
 
@@ -97,6 +105,15 @@ const normalizeDex = (dex: DexInfo): DexInfo => {
       ...dex,
       id: TOWER_DEX_ID,
       name: TOWER_DEX_NAME,
+      enabled: dex.enabled !== false,
+    };
+  }
+
+  if (id === AERO_DEX_ID || id === "aerodrome" || name.includes("aero") || name.includes("aerodrome")) {
+    return {
+      ...dex,
+      id: AERO_DEX_ID,
+      name: AERO_DEX_NAME,
       enabled: dex.enabled !== false,
     };
   }
@@ -143,9 +160,13 @@ export async function getSwapDexesResponse() {
     const synthraDex = getCanonicalSynthraDex();
     const unitFlowDex = getCanonicalUnitFlowDex();
     const towerDex = isTowerDexEnabled() ? getCanonicalTowerDex() : null;
-    const localDexes = towerDex
-      ? [synthraDex, unitFlowDex, towerDex]
-      : [synthraDex, unitFlowDex];
+    const aeroDex = getCanonicalAeroDex();
+    const localDexes = [
+      synthraDex,
+      unitFlowDex,
+      ...(towerDex ? [towerDex] : []),
+      aeroDex,
+    ];
 
     if (SWAPS_DISABLED) {
       return NextResponse.json({
@@ -205,6 +226,7 @@ export async function getSwapDexesResponse() {
         getCanonicalSynthraDex(),
         getCanonicalUnitFlowDex(),
         ...towerDex,
+        getCanonicalAeroDex(),
       ],
     });
   }

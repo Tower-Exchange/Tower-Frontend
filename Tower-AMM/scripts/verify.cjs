@@ -72,7 +72,7 @@ async function main() {
   console.log("Verification status:", results);
   if (Object.values(results).some((status) => status === "unavailable")) {
     console.log(
-      "Sourcify has not listed Arc mainnet (5042) yet. Re-run this command after it is listed.",
+      "Arc Explorer could not verify yet. Re-run this command, or submit Standard JSON at https://explorer.arc.io",
     );
   }
   if (Object.values(results).some((status) => status !== "verified" && status !== "skipped")) {

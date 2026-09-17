@@ -7,6 +7,7 @@ import {
   type Hex,
 } from "viem";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { AERO_TOKEN_DECIMALS } from "@/lib/aeroDex";
 
 export const SWAP_API_ERROR_CODES = {
   INVALID_REQUEST: "INVALID_REQUEST",
@@ -101,6 +102,9 @@ export const getSwapQuoteTtlSeconds = () => {
 
 export const getTokenDecimalsByAddress = (address: string) => {
   const normalized = address.toLowerCase();
+  if (AERO_TOKEN_DECIMALS[normalized] != null) {
+    return AERO_TOKEN_DECIMALS[normalized];
+  }
 
   for (const [symbol, contractAddress] of Object.entries(TOKEN_CONTRACTS)) {
     if (contractAddress.toLowerCase() === normalized) {

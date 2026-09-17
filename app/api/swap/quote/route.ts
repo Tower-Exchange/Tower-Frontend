@@ -16,6 +16,15 @@ import {
   TOWER_DEX_NAME,
   type TowerDexQuote,
 } from "@/lib/towerDex";
+import {
+  getAeroQuote,
+  getAeroMainnetTokenAddress,
+  normalizeAeroDexId,
+  AERO_CHAIN_ID,
+  AERO_DEX_ID,
+  AERO_DEX_NAME,
+  type AeroQuote,
+} from "@/lib/aeroDex";
 
 type BackendQuote = {
   inputToken: string;
@@ -170,6 +179,44 @@ async function fetchLocalTowerDexQuote(params: {
   return quote ? towerDexQuoteToBackendQuote(quote) : null;
 }
 
+const aeroQuoteToBackendQuote = (quote: AeroQuote): BackendQuote => ({
+  inputToken: quote.inputToken,
+  outputToken: quote.outputToken,
+  inputAmount: quote.inputAmount,
+  swapInputAmount: quote.swapInputAmount,
+  outputAmount: quote.outputAmount,
+  minOut: quote.minOut,
+  inputAmountNative: quote.inputAmountNative,
+  swapInputAmountNative: quote.swapInputAmountNative,
+  outputAmountNative: quote.outputAmountNative,
+  minOutNative: quote.minOutNative,
+  priceImpact: quote.priceImpact,
+  gasEstimate: quote.gasEstimate,
+  slippage: quote.slippage,
+  feeMode: quote.feeMode,
+  feeBps: quote.feeBps,
+  feeRecipient: quote.feeRecipient,
+  platformFeeAmount: quote.platformFeeAmount,
+  platformFeeAmountNative: quote.platformFeeAmountNative,
+  route: quote.route,
+});
+
+async function fetchLocalAeroQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+}): Promise<BackendQuote | null> {
+  const quote = await getAeroQuote({
+    inputToken: params.inputToken,
+    outputToken: params.outputToken,
+    inputAmount: params.inputAmount,
+    slippageBps: params.slippageTolerance,
+  });
+
+  return quote ? aeroQuoteToBackendQuote(quote) : null;
+}
+
 async function supplementWithLocalTowerDexQuote(params: {
   inputToken: string;
   outputToken: string;
@@ -213,11 +260,61 @@ async function supplementWithLocalTowerDexQuote(params: {
   };
 }
 
-const resolveTokenAddress = (token?: string) => {
+async function supplementWithLocalAeroQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  requestedDexId?: string;
+  quotes: BackendQuote[];
+  routeOptions: RouteOption[];
+}) {
+  if (params.requestedDexId && params.requestedDexId !== AERO_DEX_ID) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const hasAeroQuote = params.routeOptions.some(
+    (option) => normalizeDexId(option.dexId || option.dexName) === AERO_DEX_ID,
+  );
+
+  if (hasAeroQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const localQuote = await fetchLocalAeroQuote(params);
+  if (!localQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const localRouteOption = routeOptionFromQuote(localQuote);
+
+  return {
+    quotes: dedupeQuotesByDex([...params.quotes, localQuote]),
+    routeOptions: dedupeRouteOptions([...params.routeOptions, localRouteOption]),
+  };
+}
+
+const resolveTokenAddress = (token?: string, chainId?: number) => {
   const normalizedToken = token?.trim();
 
   if (!normalizedToken) {
     return undefined;
+  }
+
+  if (chainId === AERO_CHAIN_ID) {
+    const mainnetAddress = getAeroMainnetTokenAddress(normalizedToken);
+    if (mainnetAddress) {
+      return mainnetAddress;
+    }
   }
 
   const symbolAddress = TOKEN_CONTRACTS[normalizedToken.toUpperCase()];
@@ -265,6 +362,10 @@ const normalizeDexId = (dexId?: string) => {
 
   if (normalizeTowerDexId(normalized) === TOWER_DEX_ID) {
     return TOWER_DEX_ID;
+  }
+
+  if (normalizeAeroDexId(normalized) === AERO_DEX_ID) {
+    return AERO_DEX_ID;
   }
 
   return normalized;
@@ -340,6 +441,8 @@ const routeOptionFromQuote = (quote: QuoteLike): RouteOption => {
             ? "Xylonet"
             : normalizedDexId === TOWER_DEX_ID
               ? TOWER_DEX_NAME
+              : normalizedDexId === AERO_DEX_ID
+                ? AERO_DEX_NAME
               : hop?.dexName || hop?.dexId || "Unknown Router",
     outputAmount: quote.outputAmount,
     routeType: quote.route?.type || "single",
@@ -683,6 +786,7 @@ export async function handleSwapQuotePost(request: NextRequest) {
       slippageTolerance,
       slippage,
       dexId,
+      chainId,
     } = body as {
       inputToken?: string;
       outputToken?: string;
@@ -690,8 +794,11 @@ export async function handleSwapQuotePost(request: NextRequest) {
       slippageTolerance?: number;
       slippage?: number;
       dexId?: string;
+      chainId?: number;
     };
     const normalizedRequestedDexId = normalizeDexId(dexId);
+    const parsedChainId = Number(chainId);
+    const isArcMainnet = parsedChainId === AERO_CHAIN_ID;
 
     if (!inputToken || !outputToken || !inputAmount) {
       return NextResponse.json(
@@ -717,8 +824,8 @@ export async function handleSwapQuotePost(request: NextRequest) {
       slippageTolerance ?? slippage,
     );
 
-    const resolvedInputToken = resolveTokenAddress(inputToken);
-    const resolvedOutputToken = resolveTokenAddress(outputToken);
+    const resolvedInputToken = resolveTokenAddress(inputToken, parsedChainId);
+    const resolvedOutputToken = resolveTokenAddress(outputToken, parsedChainId);
 
     if (!resolvedInputToken || !resolvedOutputToken) {
       return NextResponse.json(
@@ -730,16 +837,16 @@ export async function handleSwapQuotePost(request: NextRequest) {
       );
     }
 
-    const backendDexIds = getBackendDexIds(
-      resolvedInputToken,
-      resolvedOutputToken,
-    );
+    const backendDexIds = isArcMainnet
+      ? []
+      : getBackendDexIds(resolvedInputToken, resolvedOutputToken);
     const backendDexRequest = normalizedRequestedDexId || undefined;
 
     console.info("[swap/quote] quote request received", {
       inputToken: resolvedInputToken,
       outputToken: resolvedOutputToken,
       inputAmount,
+      chainId: parsedChainId || undefined,
       dexId: backendDexRequest,
       backendDexIds,
       backendUrl: BACKEND_URL,
@@ -747,44 +854,63 @@ export async function handleSwapQuotePost(request: NextRequest) {
 
     let backendResult: { quotes: BackendQuote[]; routeOptions: RouteOption[] };
 
-    try {
-      backendResult = await fetchBackendQuotes({
+    if (isArcMainnet) {
+      backendResult = {
+        quotes: [],
+        routeOptions: [],
+      };
+    } else {
+      try {
+        backendResult = await fetchBackendQuotes({
+          inputToken: resolvedInputToken,
+          outputToken: resolvedOutputToken,
+          inputAmount,
+          slippageTolerance: resolvedSlippageBps,
+          backendDexIds,
+          dexId: backendDexRequest,
+        });
+      } catch (error) {
+        if (!(error instanceof BackendQuoteError)) {
+          throw error;
+        }
+
+        console.warn("[swap/quote] backend quote failed, trying local Tower DEX:", {
+          status: error.status,
+          message: error.message,
+        });
+
+        backendResult = {
+          quotes: [],
+          routeOptions: [],
+        };
+      }
+
+      backendResult = await supplementWithLocalTowerDexQuote({
         inputToken: resolvedInputToken,
         outputToken: resolvedOutputToken,
         inputAmount,
         slippageTolerance: resolvedSlippageBps,
         backendDexIds,
-        dexId: backendDexRequest,
+        quotes: backendResult.quotes,
+        routeOptions: backendResult.routeOptions,
       });
-    } catch (error) {
-      if (!(error instanceof BackendQuoteError)) {
-        throw error;
-      }
-
-      console.warn("[swap/quote] backend quote failed, trying local Tower DEX:", {
-        status: error.status,
-        message: error.message,
-      });
-
-      backendResult = {
-        quotes: [],
-        routeOptions: [],
-      };
     }
 
-    backendResult = await supplementWithLocalTowerDexQuote({
-      inputToken: resolvedInputToken,
-      outputToken: resolvedOutputToken,
-      inputAmount,
-      slippageTolerance: resolvedSlippageBps,
-      backendDexIds,
-      quotes: backendResult.quotes,
-      routeOptions: backendResult.routeOptions,
-    });
+    if (isArcMainnet) {
+      backendResult = await supplementWithLocalAeroQuote({
+        inputToken: resolvedInputToken,
+        outputToken: resolvedOutputToken,
+        inputAmount,
+        slippageTolerance: resolvedSlippageBps,
+        requestedDexId: backendDexRequest,
+        quotes: backendResult.quotes,
+        routeOptions: backendResult.routeOptions,
+      });
+    }
 
     let candidateQuotes = backendResult.quotes;
 
-    if (candidateQuotes.length === 0) {
+    if (candidateQuotes.length === 0 && !isArcMainnet) {
       const localQuote = await fetchLocalTowerDexQuote({
         inputToken: resolvedInputToken,
         outputToken: resolvedOutputToken,

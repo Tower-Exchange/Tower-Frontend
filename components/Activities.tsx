@@ -14,6 +14,7 @@ import TransactionInfoModal from "@/components/TransactionInfoModal";
 import ThemeAwareImage from "@/components/ThemeAwareImage";
 import {
   buildTransactionInfoDetails,
+  getActivityExplorerUrl,
   type TransactionInfoDetails,
 } from "@/lib/activityDetails";
 
@@ -43,45 +44,6 @@ interface DisplayActivity {
   searchText: string;
   isCancellation?: boolean;
 }
-
-const EXPLORER_URL_BY_NETWORK_NAME: Record<string, string> = {
-  Arc: "https://testnet.arcscan.app/tx/",
-  "Arc Testnet": "https://testnet.arcscan.app/tx/",
-  "Base Sepolia": "https://sepolia.basescan.org/tx/",
-  "Optimism Sepolia": "https://sepolia-optimism.etherscan.io/tx/",
-  "Avalanche Fuji": "https://testnet.snowtrace.io/tx/",
-  "Arbitrum Sepolia": "https://sepolia.arbiscan.io/tx/",
-  "Ethereum Sepolia": "https://sepolia.etherscan.io/tx/",
-  "Linea Sepolia": "https://sepolia.lineascan.build/tx/",
-  "Polygon Amoy": "https://amoy.polygonscan.com/tx/",
-  "Sonic Testnet": "https://testnet.sonicscan.org/tx/",
-  "Unichain Sepolia": "https://unichain-sepolia.blockscout.com/tx/",
-};
-
-const canShowTransactionAction = (type: string, transactionHash: string | null) =>
-  Boolean(transactionHash && /swap|bridge/i.test(type));
-
-const getActivityExplorerUrl = (row: ActivityRow) => {
-  if (!canShowTransactionAction(row.type, row.transaction_hash)) {
-    return null;
-  }
-
-  if (row.type.toLowerCase().includes("swap")) {
-    return `https://testnet.arcscan.app/tx/${row.transaction_hash}`;
-  }
-
-  const preferredNetwork =
-    row.type.toLowerCase().includes("bridge")
-      ? row.destination_network_name || row.source_network_name
-      : row.source_network_name;
-  const explorerBaseUrl =
-    EXPLORER_URL_BY_NETWORK_NAME[preferredNetwork] ||
-    EXPLORER_URL_BY_NETWORK_NAME[row.source_network_name];
-
-  return explorerBaseUrl && row.transaction_hash
-    ? `${explorerBaseUrl}${row.transaction_hash}`
-    : null;
-};
 
 const getDisplayStatus = (status: ActivityRow["status"]) => {
   if (status === "Successful" || status === "Pending") {

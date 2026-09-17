@@ -12,6 +12,7 @@ import synthraLogo from "@/public/assets/synthralogo.svg";
 import towerLogo from "@/public/assets/Tower Logo.svg";
 import unitflowLogo from "@/public/assets/unitflow.svg";
 import xylonetLogo from "@/public/assets/xylonetlogo.svg";
+import aeroLogo from "@/public/assets/aero-icon 1.svg";
 import routeIcon from "@/public/assets/route icon.svg";
 
 interface RouteOption {
@@ -32,7 +33,7 @@ interface RouterDisplayProps {
 }
 
 type SupportedRouter = {
-  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex";
+  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex" | "aero";
   aliases: string[];
   name: string;
   logo: StaticImageData | string;
@@ -62,6 +63,12 @@ const SUPPORTED_ROUTERS: SupportedRouter[] = [
     aliases: ["tower-dex", "tower-amm", "tower"],
     name: "Tower",
     logo: towerLogo,
+  },
+  {
+    id: "aero",
+    aliases: ["aero", "aerodrome", "aero-cl", "aero-slipstream", "slipstream"],
+    name: "Aero",
+    logo: aeroLogo,
   },
 ];
 

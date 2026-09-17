@@ -64,16 +64,16 @@ module.exports = {
         network: "arc-testnet",
         chainId: 5042002,
         urls: {
-          apiURL: "https://testnet.arcscan.app/api",
-          browserURL: "https://testnet.arcscan.app",
+          apiURL: "https://explorer.testnet.arc.io/api",
+          browserURL: "https://explorer.testnet.arc.io",
         },
       },
       {
         network: "arc-mainnet",
         chainId: 5042,
         urls: {
-          apiURL: "https://api.arc-scan.org/api",
-          browserURL: "https://arc-scan.org",
+          apiURL: "https://explorer.arc.io/api",
+          browserURL: "https://explorer.arc.io",
         },
       },
     ],

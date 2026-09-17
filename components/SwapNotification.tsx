@@ -1,6 +1,7 @@
 "use client";
 import { X, Check, XCircle, Clock, ExternalLink } from "lucide-react";
 import { motion } from "framer-motion";
+import { getArcExplorerTxUrl } from "@/lib/arcNetwork";
 
 interface SwapNotificationProps {
   type: "success" | "pending" | "failed";
@@ -29,9 +30,7 @@ const SwapNotification = ({
 
   const handleViewTransaction = () => {
     if (transactionHash) {
-      // Arc Scan Testnet URL
-      const arcscanUrl = `https://testnet.arcscan.app/tx/${transactionHash}`;
-      window.open(arcscanUrl, "_blank");
+      window.open(getArcExplorerTxUrl(transactionHash), "_blank");
     }
   };
 

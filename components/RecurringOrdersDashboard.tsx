@@ -16,6 +16,7 @@ import CancelOrderConfirmationModal from "@/components/CancelOrderConfirmationMo
 import { AppErrorModal } from "@/components/AppErrorModal";
 import { ErrorBadge } from "@/components/ui/error-badge";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
+import { getArcExplorerTxUrl } from "@/lib/arcNetwork";
 
 export const RecurringOrdersDashboard = () => {
   const { user } = useRainbowKitAuth();
@@ -583,7 +584,7 @@ export const RecurringOrdersDashboard = () => {
 
                         {execution.transaction_hash && (
                           <a
-                            href={`https://testnet.arcscan.app/tx/${execution.transaction_hash}`}
+                            href={getArcExplorerTxUrl(execution.transaction_hash)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-xs text-blue-400 hover:text-blue-300 truncate block"

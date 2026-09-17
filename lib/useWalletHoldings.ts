@@ -2,8 +2,8 @@ import { useState, useEffect } from "react";
 import type { StaticImageData } from "next/image";
 
 import { getTokenIcon } from "./tokenIcons";
-import { ARC_TESTNET_CONFIG, TOKEN_CONTRACTS } from "./arcNetwork";
 import { fetchArcTokenUsdPrices } from "./tokenUsdPrices";
+import { AERO_MAINNET_TOKENS } from "./aeroDex";
 
 export interface WalletHolding {
   token: string;
@@ -14,13 +14,10 @@ export interface WalletHolding {
   rawBalance: number;
 }
 
-const ARC_HOLDINGS_CHAIN_ID = "arc-testnet";
+const ARC_HOLDINGS_CHAIN_ID = "arc";
 const SUPPORTED_PROFILE_TOKENS = [
-  { symbol: "EURC", address: TOKEN_CONTRACTS.EURC },
-  { symbol: "USDT", address: TOKEN_CONTRACTS.USDT },
-  { symbol: "cirBTC", address: TOKEN_CONTRACTS.CIRBTC },
-  { symbol: "cNGN", address: TOKEN_CONTRACTS.cNGN },
-  { symbol: "QCAD", address: TOKEN_CONTRACTS.QCAD },
+  { symbol: "EURC", address: AERO_MAINNET_TOKENS.EURC },
+  { symbol: "cirBTC", address: AERO_MAINNET_TOKENS.cirBTC },
 ] as const;
 
 export const useWalletHoldings = (walletAddress: string | null) => {
@@ -51,7 +48,6 @@ export const useWalletHoldings = (walletAddress: string | null) => {
             body: JSON.stringify({
               address: walletAddress,
               chainId: ARC_HOLDINGS_CHAIN_ID,
-              rpcUrl: ARC_TESTNET_CONFIG.rpcUrl,
               tokenAddress,
               balanceType,
             }),
@@ -111,8 +107,6 @@ export const useWalletHoldings = (walletAddress: string | null) => {
             const price = priceMap[tokenName] || 0;
             const value = formattedBalance * price;
 
-            console.log(`Adding ${tokenName}: ${formattedBalance} (price: ${price})`);
-
             newHoldings.push({
               token: tokenName,
               icon: getTokenIcon(tokenName),
@@ -127,14 +121,14 @@ export const useWalletHoldings = (walletAddress: string | null) => {
         newHoldings.sort(
           (a, b) =>
             parseFloat(b.value.replace("$", "")) -
-            parseFloat(a.value.replace("$", ""))
+            parseFloat(a.value.replace("$", "")),
         );
 
         setHoldings(newHoldings);
       } catch (err) {
         console.error("Error fetching wallet holdings:", err);
         setError(
-          err instanceof Error ? err.message : "Failed to fetch holdings"
+          err instanceof Error ? err.message : "Failed to fetch holdings",
         );
         setHoldings([]);
       } finally {

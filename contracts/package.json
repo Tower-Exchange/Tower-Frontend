@@ -26,7 +26,9 @@
     "register-routers": "hardhat run scripts/register-routers.ts --network arc-testnet",
     "test": "hardhat test",
     "deploy:tower-dex-adapter": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-testnet",
-    "deploy:tower-dex-adapter:mainnet": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-mainnet"
+    "deploy:tower-dex-adapter:mainnet": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-mainnet",
+    "deploy:aero-adapter:mainnet": "hardhat run scripts/deploy-aero-adapter.cjs --network arc-mainnet",
+    "verify:aero-adapter:mainnet": "hardhat run scripts/verify-aero-adapter.cjs --network arc-mainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

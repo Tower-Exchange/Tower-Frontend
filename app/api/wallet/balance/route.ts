@@ -70,6 +70,7 @@ const KNOWN_ERC20_DECIMALS: Record<string, number> = {
           : 6,
       ]),
   ),
+  "0x171a4217b86a807a64eb94757db6849fb4bdbaa0": 8,
   ...Object.fromEntries(
     Object.values(BRIDGE_EURC_ADDRESSES).map((address) => [
       address.toLowerCase(),

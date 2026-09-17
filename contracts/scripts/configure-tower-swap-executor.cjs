@@ -3,7 +3,7 @@ const path = require("path");
 const { ethers, network } = require("hardhat");
 require("dotenv").config();
 
-const { sendAndWait } = require("./lib/waitForTx.cjs");
+const { isTransientRpcError, sendAndWait } = require("./lib/waitForTx.cjs");
 const { MAINNET_TREASURY } = require("./lib/mainnetAddresses.cjs");
 
 const TESTNET_TOWER_DEX_ROUTER = "0xDf115b4f2F22B9255B2E63348423B6C5B379Bce2";
@@ -234,6 +234,17 @@ function savedMainnetAdapter() {
   );
 }
 
+function savedAeroAdapter() {
+  return readJson(
+    path.join(
+      __dirname,
+      "..",
+      "deployments",
+      "aero-adapter-arc-mainnet-deployment.json",
+    ),
+  );
+}
+
 function savedUnitFlowMainnet() {
   return readJson(
     path.join(__dirname, "..", "deployments", "unitflow-arc-mainnet.json"),
@@ -275,21 +286,27 @@ function resolveAllowlist(kind) {
   }
 
   const adapter = savedMainnetAdapter()?.adapter;
+  const aeroAdapter = savedAeroAdapter()?.adapter;
   const router = savedMainnetAmm()?.router;
   const unitflowRouter = savedUnitFlowMainnet()?.v3?.swapRouter;
+  const aeroSwapRouter = "0xb4702E1375F712da2e0d5F534c30c0c1513EdB2B";
   const routeDefaults = [
     adapter,
+    aeroAdapter,
     SYNTHRA_MAINNET.universalRouter,
     SYNTHRA_MAINNET.swapRouter02,
     unitflowRouter,
+    aeroSwapRouter,
   ];
   const spenderDefaults = [
     adapter,
+    aeroAdapter,
     SYNTHRA_MAINNET.permit2,
     SYNTHRA_MAINNET.swapRouter02,
     SYNTHRA_MAINNET.universalRouter,
     router,
     unitflowRouter,
+    aeroSwapRouter,
   ];
   const defaults = kind === "route" ? routeDefaults : spenderDefaults;
 
@@ -302,13 +319,40 @@ function resolveAllowlist(kind) {
   return uniqueAddresses([...defaults, ...fromEnv]);
 }
 
+async function withRpcRetry(label, action, attempts = 6) {
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return await action();
+    } catch (error) {
+      lastError = error;
+      if (!isTransientRpcError(error) || attempt === attempts) {
+        throw error;
+      }
+      const delayMs = Math.min(15_000, 1500 * attempt);
+      console.warn(
+        `${label} RPC error (${attempt}/${attempts}): ${
+          error instanceof Error ? error.message : String(error)
+        }. Retrying in ${delayMs}ms...`,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+
+  throw lastError;
+}
+
 async function setAllowlist(contract, label, setter, addresses) {
   for (const address of addresses) {
     validateAddress(label, address);
-    const isAlreadyAllowed =
-      setter === "setRouteTarget"
-        ? await contract.routeTargets(address)
-        : await contract.approvalSpenders(address);
+    const isAlreadyAllowed = await withRpcRetry(
+      `${label} check ${address}`,
+      () =>
+        setter === "setRouteTarget"
+          ? contract.routeTargets(address)
+          : contract.approvalSpenders(address),
+    );
 
     if (isAlreadyAllowed) {
       console.log(`${label} already allowed:`, address);
@@ -316,7 +360,9 @@ async function setAllowlist(contract, label, setter, addresses) {
     }
 
     console.log(`Allowlisting ${label}:`, address);
-    const code = await ethers.provider.getCode(address);
+    const code = await withRpcRetry(`${label} getCode ${address}`, () =>
+      ethers.provider.getCode(address),
+    );
     if (!code || code === "0x") {
       console.warn(
         `Skipping ${label} ${address}: no contract code on this network.`,
@@ -324,8 +370,11 @@ async function setAllowlist(contract, label, setter, addresses) {
       continue;
     }
 
-    const tx = await contract[setter](address, true);
-    await tx.wait();
+    await sendAndWait(
+      contract[setter](address, true),
+      `${label} ${address}`,
+      ethers.provider,
+    );
     console.log(`${label} allowed:`, address);
   }
 }

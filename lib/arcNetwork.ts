@@ -1,10 +1,21 @@
+export const ARC_TESTNET_EXPLORER_URL = "https://testnet.arcscan.app";
+export const ARC_MAINNET_EXPLORER_URL = "https://explorer.arc.io";
+
+export const getArcExplorerUrl = (mode: "testnet" | "mainnet" = "mainnet") =>
+  mode === "mainnet" ? ARC_MAINNET_EXPLORER_URL : ARC_TESTNET_EXPLORER_URL;
+
+export const getArcExplorerTxUrl = (
+  transactionHash: string,
+  mode: "testnet" | "mainnet" = "mainnet",
+) => `${getArcExplorerUrl(mode)}/tx/${transactionHash}`;
+
 // Arc Testnet Configuration and utilities
 export const ARC_TESTNET_CONFIG = {
   chainId: 5042002,
   rpcUrl: "https://rpc.testnet.arc.network",
   currency: "USDC",
   decimals: 18,
-  explorerUrl: "https://testnet.arcscan.app",
+  explorerUrl: ARC_TESTNET_EXPLORER_URL,
   faucetUrl: "https://faucet.circle.com",
 };
 
@@ -30,13 +41,12 @@ export const ARC_ADD_NETWORK_PARAMS = [
       "https://rpc.blockdaemon.testnet.arc.network",
       "https://rpc.testnet.arc.network",
     ],
-    blockExplorerUrls: ["https://testnet.arcscan.app"],
+    blockExplorerUrls: [ARC_TESTNET_EXPLORER_URL],
   },
 ];
 
 // Official Arc mainnet endpoints: https://docs.arc.io/arc/references/connect-to-arc#rpc-endpoints
 export const ARC_MAINNET_PUBLIC_RPC_URL = "https://rpc.mainnet.arc.io";
-export const ARC_MAINNET_EXPLORER_URL = "https://explorer.arc.io";
 export const ARC_MAINNET_RPC_URLS = [
   ARC_MAINNET_PUBLIC_RPC_URL,
   "https://rpc.blockdaemon.mainnet.arc.io",

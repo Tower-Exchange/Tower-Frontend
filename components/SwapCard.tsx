@@ -12,17 +12,18 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { formatUnits, parseUnits } from "viem";
+import { encodeFunctionData, formatUnits, parseUnits, type Address } from "viem";
 import {
   formatBalance,
   getRevertReasonViaPublicRpc,
-  TOKEN_CONTRACTS,
   TOKEN_DECIMALS,
   NATIVE_TOKENS,
+  ARC_NETWORK_CHAIN_ID,
   getArcNetworkHex,
   getArcNetworkLabel,
   normalizeArcChainHex,
 } from "@/lib/arcNetwork";
+import { getArcSwapTokenAddress } from "@/lib/aeroDex";
 import { getArcRpcProxyPath } from "@/lib/arcRpc";
 import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
 import { useTowerSwap, type SwapQuote, type SwapRouteOption } from "@/lib/hooks/useTowerSwap";
@@ -72,7 +73,10 @@ const SWAP_SUCCESS_NOTIFICATION_DURATION_MS = 10000;
 const SWAP_SUCCESS_RESET_DELAY_MS = SWAP_SUCCESS_NOTIFICATION_DURATION_MS + 500;
 const ARC_NATIVE_USDC_DECIMALS = 18;
 const RECEIPT_REQUEST_TIMEOUT_MS = 12000;
+const RECEIPT_WALLET_LOOKUP_TIMEOUT_MS = 4000;
 const RECEIPT_POLL_INTERVAL_MS = 1000;
+const APPROVAL_RECEIPT_WAIT_MS = 180000;
+const APPROVAL_EXTENDED_WAIT_MS = 900000;
 const SWAPS_DISABLED = process.env.NEXT_PUBLIC_SWAPS_DISABLED !== "false";
 const SWAPS_DISABLED_MESSAGE =
   "Swaps are temporarily paused for maintenance.";
@@ -286,6 +290,178 @@ const getArcTransactionByHash = (
     rpcUrl,
   );
 
+const ERC20_ALLOWANCE_ABI = [
+  {
+    type: "function",
+    name: "allowance",
+    stateMutability: "view",
+    inputs: [
+      { name: "owner", type: "address" },
+      { name: "spender", type: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+const readArcErc20Allowance = async (
+  token: string,
+  owner: string,
+  spender: string,
+  rpcUrl: string,
+) => {
+  const result = await callArcRpc<string>(
+    "eth_call",
+    [
+      {
+        to: token,
+        data: encodeFunctionData({
+          abi: ERC20_ALLOWANCE_ABI,
+          functionName: "allowance",
+          args: [owner as Address, spender as Address],
+        }),
+      },
+      "latest",
+    ],
+    RECEIPT_REQUEST_TIMEOUT_MS,
+    "Allowance lookup",
+    rpcUrl,
+  );
+
+  return BigInt(result || "0x0");
+};
+
+const confirmArcSubmittedTransaction = async (
+  txHash: string,
+  {
+    label,
+    rpcUrl,
+    walletReceiptLookup,
+    initialWaitMs = APPROVAL_RECEIPT_WAIT_MS,
+    extendedWaitMs = APPROVAL_EXTENDED_WAIT_MS,
+  }: {
+    label: string;
+    rpcUrl: string;
+    walletReceiptLookup?: (
+      txHash: string,
+      label: string,
+    ) => Promise<BrowserWalletTransactionReceipt | null>;
+    initialWaitMs?: number;
+    extendedWaitMs?: number;
+  },
+): Promise<BrowserWalletTransactionReceipt> => {
+  let receipt = await waitForArcTransactionReceipt(txHash, {
+    label: `${label} receipt lookup`,
+    maxWaitMs: initialWaitMs,
+    walletReceiptLookup,
+    rpcUrl,
+  });
+
+  if (receipt) {
+    return receipt;
+  }
+
+  const lookupPendingTx = () =>
+    getArcTransactionByHash(txHash, `${label} pending lookup`, rpcUrl).catch(
+      (error: unknown) => {
+        console.warn(`${label} pending lookup failed`, {
+          txHash,
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      },
+    );
+
+  const waitWhilePending = async () => {
+    const extendedWaitStartedAt = Date.now();
+    let missingPendingLookups = 0;
+
+    while (Date.now() - extendedWaitStartedAt < extendedWaitMs) {
+      await sleep(5000);
+      receipt = await waitForArcTransactionReceipt(txHash, {
+        label: `${label} extended receipt lookup`,
+        maxWaitMs: 15000,
+        pollIntervalMs: 3000,
+        walletReceiptLookup,
+        rpcUrl,
+      });
+      if (receipt) {
+        return receipt;
+      }
+
+      const latestPendingTx = await lookupPendingTx();
+      if (!latestPendingTx) {
+        missingPendingLookups += 1;
+      } else {
+        missingPendingLookups = 0;
+        if (latestPendingTx.blockNumber) {
+          receipt = await waitForArcTransactionReceipt(txHash, {
+            label: `${label} mined receipt lookup`,
+            maxWaitMs: 30000,
+            walletReceiptLookup,
+            rpcUrl,
+          });
+          if (receipt) {
+            return receipt;
+          }
+        }
+      }
+
+      if (missingPendingLookups >= 4) {
+        throw new Error(
+          `${label} was dropped by Arc RPC before confirmation. Check the explorer, then retry.`,
+        );
+      }
+    }
+
+    throw new Error(
+      `${label} is still pending. Check the explorer before retrying.`,
+    );
+  };
+
+  let pendingTx = await lookupPendingTx();
+
+  if (!pendingTx) {
+    const invisibleWaitStartedAt = Date.now();
+    while (Date.now() - invisibleWaitStartedAt < 120000) {
+      await sleep(5000);
+      receipt = await waitForArcTransactionReceipt(txHash, {
+        label: `${label} delayed receipt lookup`,
+        maxWaitMs: 15000,
+        pollIntervalMs: 3000,
+        walletReceiptLookup,
+        rpcUrl,
+      });
+      if (receipt) {
+        return receipt;
+      }
+      pendingTx = await lookupPendingTx();
+      if (pendingTx) {
+        break;
+      }
+    }
+  }
+
+  if (pendingTx?.blockNumber) {
+    receipt = await waitForArcTransactionReceipt(txHash, {
+      label: `${label} mined receipt lookup`,
+      maxWaitMs: 30000,
+      walletReceiptLookup,
+      rpcUrl,
+    });
+    if (receipt) {
+      return receipt;
+    }
+  }
+
+  if (pendingTx) {
+    return waitWhilePending();
+  }
+
+  throw new Error(
+    `${label} was submitted, but Arc never showed the transaction. Check the explorer and retry.`,
+  );
+};
+
 const getArcLatestNonce = (address: string, label: string, rpcUrl: string) =>
   callArcRpc<string>(
     "eth_getTransactionCount",
@@ -441,6 +617,16 @@ const normalizeSwapRouteDexId = (dexId?: string) => {
     normalized === "tower-amm"
   ) {
     return "tower-dex";
+  }
+
+  if (
+    normalized === "aero" ||
+    normalized === "aerodrome" ||
+    normalized === "aero-cl" ||
+    normalized.includes("aerodrome") ||
+    normalized.includes("slipstream")
+  ) {
+    return "aero";
   }
 
   return normalized;
@@ -1127,7 +1313,7 @@ const SwapCard = ({
       ? "Searching for best route"
       : receiveUsdValueLabel;
   const fetchSwapTokenBalance = useCallback(async (tokenSymbol: SwapTokenSymbol) => {
-    const tokenAddress = TOKEN_CONTRACTS[tokenSymbol];
+    const tokenAddress = getArcSwapTokenAddress(tokenSymbol, arcNetworkMode);
 
       if (!tokenAddress || !user?.wallet?.address) {
         return 0;
@@ -1171,7 +1357,7 @@ const SwapCard = ({
         formatUnits(BigInt(rawBalance), TOKEN_DECIMALS[tokenSymbol] ?? 18),
       );
     },
-    [arcRpcUrl, user?.wallet?.address],
+    [arcNetworkMode, arcRpcUrl, user?.wallet?.address],
   );
 
   const fetchUserBalances = useCallback(async () => {
@@ -1267,6 +1453,10 @@ const SwapCard = ({
       return [] as string[];
     }
 
+    if (arcNetworkMode === "mainnet") {
+      return ["aero"];
+    }
+
     const routerIds = ["xylonet-adapter", "synthra"];
 
     if (receiveToken.symbol !== "USDC") {
@@ -1276,7 +1466,7 @@ const SwapCard = ({
     routerIds.push("tower-dex");
 
     return routerIds;
-  }, [receiveToken, sellToken.symbol]);
+  }, [arcNetworkMode, receiveToken, sellToken.symbol]);
 
   const availableSellTokens = useMemo(
     () =>
@@ -1350,9 +1540,10 @@ const SwapCard = ({
           return;
         }
 
-        const addressMap: Record<string, string> = TOKEN_CONTRACTS;
-        const tokenInAddress = addressMap[sellToken.symbol] ?? null;
-        const tokenOutAddress = addressMap[receiveToken.symbol] ?? null;
+        const tokenInAddress =
+          getArcSwapTokenAddress(sellToken.symbol, arcNetworkMode) ?? null;
+        const tokenOutAddress =
+          getArcSwapTokenAddress(receiveToken.symbol, arcNetworkMode) ?? null;
 
         if (!tokenInAddress || !tokenOutAddress) {
           console.warn(
@@ -1400,6 +1591,7 @@ const SwapCard = ({
           amountInWei,
           slippageTolerance,
           routerId,
+          ARC_NETWORK_CHAIN_ID[arcNetworkMode],
         );
 
         if (!quoteData) {
@@ -1528,6 +1720,7 @@ const SwapCard = ({
       sellToken.symbol,
       slippageTolerance,
       availableRouterIds,
+      arcNetworkMode,
     ],
   );
   const getQuoteForSwapRef = useRef(getQuoteForSwap);
@@ -1537,12 +1730,16 @@ const SwapCard = ({
   }, [getQuoteForSwap]);
 
   useEffect(() => {
+    resetSwapQuote();
+  }, [arcNetworkMode, resetSwapQuote]);
+
+  useEffect(() => {
     if (!shouldFetchSwapQuotes || swapState === "loading") {
       quoteRefreshKeyRef.current = null;
       return;
     }
 
-    const refreshKey = `${sellToken.symbol}:${receiveToken?.symbol ?? "none"}:${sellAmount}:${slippageTolerance}`;
+    const refreshKey = `${arcNetworkMode}:${sellToken.symbol}:${receiveToken?.symbol ?? "none"}:${sellAmount}:${slippageTolerance}`;
 
     if (quoteRefreshKeyRef.current === refreshKey) {
       return;
@@ -1569,7 +1766,7 @@ const SwapCard = ({
         window.clearInterval(intervalId);
       }
     };
-  }, [sellAmount, shouldFetchSwapQuotes, swapState, sellToken.symbol, receiveToken?.symbol, slippageTolerance]);
+  }, [arcNetworkMode, sellAmount, shouldFetchSwapQuotes, swapState, sellToken.symbol, receiveToken?.symbol, slippageTolerance]);
 
   // Simulate DEX aggregator calculation
   const handleSellAmountChange = (value: string) => {
@@ -1690,7 +1887,7 @@ const SwapCard = ({
             method: "eth_getTransactionReceipt",
             params: [hash],
           },
-          RECEIPT_REQUEST_TIMEOUT_MS,
+          RECEIPT_WALLET_LOOKUP_TIMEOUT_MS,
           label,
         );
       const markSwapSuccess = (hash: string) => {
@@ -1877,15 +2074,9 @@ const SwapCard = ({
       let tokenInAddress: string | null = null;
       let tokenOutAddress: string | null = null;
 
-      const addressMap: Record<string, string> = TOKEN_CONTRACTS;
-
-      if (addressMap[sellToken.symbol]) {
-        tokenInAddress = addressMap[sellToken.symbol];
-      }
-
-      if (addressMap[receiveToken.symbol]) {
-        tokenOutAddress = addressMap[receiveToken.symbol];
-      }
+      tokenInAddress = getArcSwapTokenAddress(sellToken.symbol, arcNetworkMode) ?? null;
+      tokenOutAddress =
+        getArcSwapTokenAddress(receiveToken.symbol, arcNetworkMode) ?? null;
 
       if (!tokenInAddress || !tokenOutAddress) {
         throw new Error(
@@ -1938,6 +2129,8 @@ const SwapCard = ({
         tokenOutAddress,
         amountInWei,
         slippageTolerance,
+        selectedRouterId,
+        ARC_NETWORK_CHAIN_ID[arcNetworkMode],
       );
 
       if (!quote) {
@@ -2031,20 +2224,45 @@ const SwapCard = ({
 
             console.log(`${approvalLabel} transaction sent:`, approveTxHash);
 
-            const approvalReceipt = await waitForArcTransactionReceipt(
-              approveTxHash,
-              {
-                label: `${approvalLabel} receipt lookup`,
-                maxWaitMs: 60000,
-                walletReceiptLookup,
-                rpcUrl: arcRpcUrl,
-              },
-            );
-
-            if (!approvalReceipt) {
-              throw new Error(
-                `${approvalLabel} transaction not confirmed after 60 seconds`,
+            let approvalReceipt: BrowserWalletTransactionReceipt | null = null;
+            try {
+              approvalReceipt = await confirmArcSubmittedTransaction(
+                approveTxHash,
+                {
+                  label: approvalLabel,
+                  walletReceiptLookup,
+                  rpcUrl: arcRpcUrl,
+                },
               );
+            } catch (confirmError: unknown) {
+              const requiredAllowance =
+                approvalTx.spender && approvalTx.amountRaw && approvalTx.token
+                  ? BigInt(approvalTx.amountRaw)
+                  : null;
+              if (requiredAllowance && requiredAllowance > 0n) {
+                const allowance = await readArcErc20Allowance(
+                  approvalTx.token as string,
+                  userAddress,
+                  approvalTx.spender as string,
+                  arcRpcUrl,
+                ).catch(() => 0n);
+                if (allowance >= requiredAllowance) {
+                  console.warn(
+                    `${approvalLabel} receipt wait failed, but on-chain allowance is sufficient. Continuing.`,
+                    {
+                      txHash: approveTxHash,
+                      allowance: allowance.toString(),
+                      required: requiredAllowance.toString(),
+                      message:
+                        confirmError instanceof Error
+                          ? confirmError.message
+                          : String(confirmError),
+                    },
+                  );
+                  continue;
+                }
+              }
+              throw confirmError;
             }
 
             if (approvalReceipt.status === "0x0") {
@@ -2071,6 +2289,8 @@ const SwapCard = ({
             tokenOutAddress,
             amountInWei,
             slippageTolerance,
+            selectedRouterId,
+            ARC_NETWORK_CHAIN_ID[arcNetworkMode],
           );
 
           if (!freshQuote) {

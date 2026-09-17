@@ -1,29 +1,73 @@
 const https = require("https");
 const { URL } = require("url");
 
-const USER_AGENT = "tower-finance/verify";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+
+const LICENSE_TYPES = {
+  none: "none",
+  MIT: "mit",
+  mit: "mit",
+  "GPL-3.0": "gnu_gpl_v3",
+  "GPL-2.0": "gnu_gpl_v2",
+  "LGPL-3.0": "gnu_lgpl_v3",
+  "Apache-2.0": "apache_2_0",
+  "BSL-1.1": "bsl_1_1",
+};
 
 const sleepMs = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const isAlreadyVerified = (message) =>
   /already verified/i.test(String(message || ""));
 
-function getArcscanApiUrl(networkName) {
-  if (process.env.ARCSCAN_API_URL) {
-    return process.env.ARCSCAN_API_URL.replace(/\/$/, "");
+const isCloudflareChallenge = (status, text) =>
+  status === 403 &&
+  /just a moment|cf-mitigated|challenge-platform|cloudflare/i.test(
+    String(text || ""),
+  );
+
+function getExplorerConfig(networkName) {
+  if (process.env.ARC_EXPLORER_API_URL) {
+    return {
+      apiURL: process.env.ARC_EXPLORER_API_URL.replace(/\/$/, ""),
+      browserURL: (process.env.ARC_EXPLORER_URL || "https://explorer.arc.io").replace(
+        /\/$/,
+        "",
+      ),
+    };
   }
 
   if (networkName === "arc-testnet") {
-    return "https://api-testnet.arc-scan.org";
+    return {
+      apiURL: "https://explorer.testnet.arc.io/api",
+      browserURL: "https://explorer.testnet.arc.io",
+    };
   }
 
-  return "https://api.arc-scan.org";
+  return {
+    apiURL: "https://explorer.arc.io/api",
+    browserURL: "https://explorer.arc.io",
+  };
 }
 
-function requestJson(method, urlString, body) {
+function getArcscanApiUrl(networkName) {
+  return getExplorerConfig(networkName).apiURL;
+}
+
+function explorerV2Url(apiURL, path) {
+  const base = apiURL.replace(/\/$/, "");
+  return `${base}/v2${path.startsWith("/") ? path : `/${path}`}`;
+}
+
+function request(method, urlString, { body, contentType, headers } = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlString);
-    const payload = body == null ? null : JSON.stringify(body);
+    const payload =
+      body == null
+        ? null
+        : Buffer.isBuffer(body)
+          ? body
+          : Buffer.from(body);
     const request = https.request(
       {
         protocol: url.protocol,
@@ -33,12 +77,15 @@ function requestJson(method, urlString, body) {
         headers: {
           Accept: "application/json",
           "User-Agent": USER_AGENT,
+          Origin: `${url.protocol}//${url.hostname}`,
+          Referer: `${url.protocol}//${url.hostname}/`,
           ...(payload
             ? {
-                "Content-Type": "application/json",
-                "Content-Length": Buffer.byteLength(payload),
+                "Content-Type": contentType || "application/json",
+                "Content-Length": payload.length,
               }
             : {}),
+          ...headers,
         },
       },
       (response) => {
@@ -50,7 +97,7 @@ function requestJson(method, urlString, body) {
           try {
             data = text ? JSON.parse(text) : null;
           } catch {
-            // Keep the raw body when Arcscan does not return JSON.
+            // Keep the raw body when the explorer does not return JSON.
           }
           resolve({
             status: response.statusCode || 0,
@@ -68,13 +115,29 @@ function requestJson(method, urlString, body) {
   });
 }
 
-async function getVerifyOptions(networkName) {
-  const apiUrl = getArcscanApiUrl(networkName);
-  return requestJson("GET", `${apiUrl}/v1/verify/options`);
+function requestJson(method, urlString, body) {
+  return request(method, urlString, {
+    body: body == null ? null : JSON.stringify(body),
+    contentType: "application/json",
+  });
 }
 
-function sourcifyIsReady(options) {
-  return Boolean(options?.data) && options.data.provider_supported !== false;
+function cloudflareError(explorer, result) {
+  return new Error(
+    `Cloudflare blocked ${explorer.browserURL}. Open the contract there and verify with Solidity Standard JSON, or retry from a network that can reach ${explorer.apiURL}.`,
+  );
+}
+
+async function getVerifyOptions(networkName) {
+  const explorer = getExplorerConfig(networkName);
+  return requestJson(
+    "GET",
+    explorerV2Url(explorer.apiURL, "/smart-contracts/verification/config"),
+  );
+}
+
+function sourcifyIsReady() {
+  return true;
 }
 
 async function encodeConstructorArguments(hre, contractFQN, constructorArguments) {
@@ -105,49 +168,146 @@ async function verifyWithHardhat(hre, { address, constructorArguments, contract 
 }
 
 function compilerVersion(buildInfo) {
-  return String(buildInfo.solcLongVersion || buildInfo.solcVersion || "").replace(
-    /^v/,
-    "",
+  const version = String(buildInfo.solcLongVersion || buildInfo.solcVersion || "");
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
+function toStandardJsonInput(buildInfo) {
+  const input = buildInfo?.input;
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("Hardhat build-info is missing compiler input.");
+  }
+  if (!input.sources || typeof input.sources !== "object" || Array.isArray(input.sources)) {
+    throw new Error("Hardhat compiler input is missing a sources object.");
+  }
+  return {
+    language: input.language || "Solidity",
+    sources: input.sources,
+    settings: input.settings || {},
+  };
+}
+
+function constructorArgsHex(value) {
+  const encoded = String(value || "").trim();
+  if (!encoded || encoded === "0x") {
+    return "";
+  }
+  return encoded.replace(/^0x/i, "");
+}
+
+function contractNameOnly(contractFQN) {
+  const value = String(contractFQN || "");
+  const idx = value.lastIndexOf(":");
+  return idx >= 0 ? value.slice(idx + 1) : value;
+}
+
+function licenseType(license) {
+  return LICENSE_TYPES[license] || LICENSE_TYPES.MIT;
+}
+
+function isVerifiedPayload(data) {
+  if (!data || typeof data !== "object") {
+    return false;
+  }
+  if (data.is_verified || data.is_fully_verified || data.verified) {
+    return true;
+  }
+  const source = data.result?.[0]?.SourceCode;
+  return Boolean(source && source !== "");
+}
+
+async function readVerifiedSource(apiURL, address) {
+  const v2 = await requestJson(
+    "GET",
+    explorerV2Url(apiURL, `/smart-contracts/${address}`),
+  );
+  if (v2.status && v2.status < 500 && !isCloudflareChallenge(v2.status, v2.text)) {
+    return v2;
+  }
+  return requestJson(
+    "GET",
+    `${apiURL.replace(/\/$/, "")}?module=contract&action=getsourcecode&address=${address}`,
   );
 }
 
-async function submitStandardJson(apiUrl, address, buildInfo, constructorArgumentsHex, license) {
-  const payload = {
-    method: "std-json",
-    compiler_version: compilerVersion(buildInfo),
-    license: license || "MIT",
-    evm_version: buildInfo.input?.settings?.evmVersion || "default",
-    input: buildInfo.input,
-    constructor_arguments: constructorArgumentsHex || "",
+function buildMultipart(fields, files) {
+  const boundary = `----TowerVerify${Date.now()}`;
+  const chunks = [];
+  for (const [key, value] of Object.entries(fields)) {
+    if (value == null || value === "") {
+      continue;
+    }
+    chunks.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${key}"\r\n\r\n${value}\r\n`,
+    );
+  }
+  for (const file of files) {
+    chunks.push(
+      `--${boundary}\r\nContent-Disposition: form-data; name="${file.field}"; filename="${file.filename}"\r\nContent-Type: ${file.type || "application/json"}\r\n\r\n`,
+    );
+    chunks.push(file.content);
+    chunks.push("\r\n");
+  }
+  chunks.push(`--${boundary}--\r\n`);
+  return {
+    contentType: `multipart/form-data; boundary=${boundary}`,
+    body: Buffer.concat(
+      chunks.map((part) => (Buffer.isBuffer(part) ? part : Buffer.from(part))),
+    ),
   };
-
-  return requestJson("POST", `${apiUrl}/v1/verify/${address}`, payload);
 }
 
-async function pollJob(apiUrl, jobId, attempts = 12) {
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    const result = await requestJson("GET", `${apiUrl}/v1/verify/jobs/${jobId}`);
-    const status =
-      result.data?.status ||
-      result.data?.state ||
-      result.data?.result ||
-      result.data;
-    console.log(`Arcscan verify job ${jobId} (${attempt}/${attempts}):`, status);
+async function submitBlockscoutStandardInput({
+  explorer,
+  address,
+  buildInfo,
+  constructorArgumentsHex,
+  license,
+  contractFQN,
+}) {
+  const stdJson = JSON.stringify(toStandardJsonInput(buildInfo));
+  const encoded = constructorArgsHex(constructorArgumentsHex);
+  const fields = {
+    compiler_version: compilerVersion(buildInfo),
+    license_type: licenseType(license),
+    contract_name: contractNameOnly(contractFQN),
+    autodetect_constructor_args: encoded ? "false" : "true",
+    constructor_args: encoded,
+  };
+  const multipart = buildMultipart(fields, [
+    {
+      field: "files[0]",
+      filename: "standard-input.json",
+      type: "application/json",
+      content: Buffer.from(stdJson),
+    },
+  ]);
 
-    const serialized = JSON.stringify(result.data || {});
-    if (/verified|success|pass/i.test(serialized) && !/pending|queued/i.test(serialized)) {
-      return result.data;
+  const url = explorerV2Url(
+    explorer.apiURL,
+    `/smart-contracts/${address}/verification/via/standard-input`,
+  );
+  return request("POST", url, {
+    body: multipart.body,
+    contentType: multipart.contentType,
+  });
+}
+
+async function pollVerified(explorer, address, attempts = 18) {
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const source = await readVerifiedSource(explorer.apiURL, address);
+    if (isCloudflareChallenge(source.status, source.text)) {
+      throw cloudflareError(explorer, source);
     }
-    if (/fail|reject|unsupported|error/i.test(serialized) && !/pending/i.test(serialized)) {
-      throw new Error(`Arcscan verification job failed: ${serialized}`);
+    if (isVerifiedPayload(source.data)) {
+      return source.data;
     }
+    console.log(
+      `Waiting for ${explorer.browserURL} verification (${attempt}/${attempts})...`,
+    );
     await sleepMs(Math.min(15_000, 1500 * attempt));
   }
-  throw new Error(`Arcscan verification job ${jobId} did not finish`);
-}
-
-async function readVerifiedSource(apiUrl, address) {
-  return requestJson("GET", `${apiUrl}/v1/contracts/${address}/source`);
+  return null;
 }
 
 async function verifyOnArcscan(hre, {
@@ -162,9 +322,10 @@ async function verifyOnArcscan(hre, {
     return "skipped";
   }
 
-  const networkName = hre.network.name;
-  const apiUrl = getArcscanApiUrl(networkName);
-  console.log(`Verifying ${label} at ${address} on ${networkName} via ${apiUrl}`);
+  const explorer = getExplorerConfig(hre.network.name);
+  console.log(
+    `Verifying ${label} at ${address} on ${hre.network.name} via ${explorer.browserURL}`,
+  );
 
   try {
     await hre.run("compile");
@@ -175,42 +336,42 @@ async function verifyOnArcscan(hre, {
     );
   }
 
-  const existing = await readVerifiedSource(apiUrl, address).catch(() => ({ data: null }));
-  if (existing.data?.verified) {
-    console.log(`Already verified on Arcscan: ${address}`);
+  const existing = await readVerifiedSource(explorer.apiURL, address).catch(() => ({
+    data: null,
+    status: 0,
+    text: "",
+  }));
+  if (isVerifiedPayload(existing.data)) {
+    console.log(`Already verified on ${explorer.browserURL}: ${address}`);
     return "verified";
   }
-
-  const options = await getVerifyOptions(networkName).catch(() => ({ data: null }));
-  if (!sourcifyIsReady(options) && process.env.VERIFY_FORCE !== "true") {
+  if (isCloudflareChallenge(existing.status, existing.text)) {
     console.warn(
-      options.data?.message ||
-        `Sourcify has not listed chain ${options.data?.chain_id || "5042"} yet, so Arcscan cannot verify ${label}. Re-run this script after Arc is added to Sourcify.`,
+      `Could not read ${explorer.browserURL} through Cloudflare. Submitting verification anyway.`,
     );
-    return "unavailable";
   }
 
-  if (networkName !== "arc-mainnet") {
-    try {
-      await verifyWithHardhat(hre, {
-        address,
-        constructorArguments,
-        contract,
-      });
-      console.log(`Verified ${label} via Hardhat explorer plugin`);
+  try {
+    await verifyWithHardhat(hre, {
+      address,
+      constructorArguments,
+      contract,
+    });
+    console.log(`Verified ${label} via Hardhat on ${explorer.browserURL}`);
+    return "verified";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isAlreadyVerified(message)) {
+      console.log(`Already verified: ${address}`);
       return "verified";
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (isAlreadyVerified(message)) {
-        console.log(`Already verified: ${address}`);
-        return "verified";
-      }
-      console.warn(`Hardhat verify:verify failed for ${label}: ${message}`);
     }
+    console.warn(`Hardhat verify:verify failed for ${label}: ${message}`);
   }
 
   if (!contract) {
-    throw new Error(`Set a fully qualified contract name to verify ${address} on Arcscan.`);
+    throw new Error(
+      `Set a fully qualified contract name to verify ${address} on ${explorer.browserURL}.`,
+    );
   }
 
   const buildInfo = await getBuildInfo(hre, contract);
@@ -219,47 +380,56 @@ async function verifyOnArcscan(hre, {
     contract,
     constructorArguments,
   );
-  const submitted = await submitStandardJson(
-    apiUrl,
+  const submitted = await submitBlockscoutStandardInput({
+    explorer,
     address,
     buildInfo,
-    encoded,
+    constructorArgumentsHex: encoded,
     license,
-  );
+    contractFQN: contract,
+  });
   console.log(
-    `Arcscan /v1/verify responded ${submitted.status}:`,
+    `${explorer.browserURL} standard-input responded ${submitted.status}:`,
     typeof submitted.data === "string"
       ? submitted.text.slice(0, 500)
       : JSON.stringify(submitted.data),
   );
 
+  if (isCloudflareChallenge(submitted.status, submitted.text)) {
+    throw cloudflareError(explorer, submitted);
+  }
+
   if (submitted.status >= 400) {
     const detail =
-      submitted.data?.error?.message ||
       submitted.data?.message ||
+      submitted.data?.error ||
       submitted.text ||
       `HTTP ${submitted.status}`;
     throw new Error(
-      `Arcscan rejected verification for ${address}: ${detail}`,
+      `${explorer.browserURL} rejected verification for ${address}: ${detail}`,
     );
   }
 
-  const jobId =
-    submitted.data?.job_id ||
-    submitted.data?.id ||
-    submitted.data?.jobId;
-  if (jobId) {
-    await pollJob(apiUrl, jobId);
+  const verified = await pollVerified(explorer, address);
+  if (verified) {
+    console.log(`Verified ${label} on ${explorer.browserURL}`);
+    return "verified";
   }
 
-  const source = await readVerifiedSource(apiUrl, address);
-  if (source.data?.verified) {
-    console.log(`Verified ${label} on Arcscan`);
+  if (
+    submitted.status === 200 ||
+    /already verified|smart-contract.*verified/i.test(
+      JSON.stringify(submitted.data || submitted.text || ""),
+    )
+  ) {
+    console.log(
+      `Submitted ${label} to ${explorer.browserURL}. Confirm the Code tab at ${explorer.browserURL}/address/${address}?tab=contract`,
+    );
     return "verified";
   }
 
   throw new Error(
-    `Arcscan accepted a verification payload for ${address} but the contract is still unverified.`,
+    `${explorer.browserURL} accepted a verification payload for ${address} but the contract is still unverified.`,
   );
 }
 
@@ -298,6 +468,7 @@ async function verifyContractWithRetry(hre, params, maxRetries = 3, delayMs = 50
 
 module.exports = {
   getArcscanApiUrl,
+  getExplorerConfig,
   getVerifyOptions,
   sourcifyIsReady,
   verifyContractWithRetry,

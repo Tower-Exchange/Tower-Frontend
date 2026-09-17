@@ -5,6 +5,7 @@ import { Check, Loader, Copy, ExternalLink, X } from "lucide-react";
 import { useState } from "react";
 
 import { ErrorBadge } from "@/components/ui/error-badge";
+import { getArcExplorerTxUrl } from "@/lib/arcNetwork";
 
 interface TransactionConfirmationProps {
   status:
@@ -182,13 +183,12 @@ export const TransactionConfirmation: React.FC<
                   </button>
                   <a
                     href={
-                      explorerUrl ||
-                      `https://testnet.arcscan.app/tx/${transactionHash}`
+                      explorerUrl || getArcExplorerTxUrl(transactionHash)
                     }
                     target="_blank"
                     rel="noopener noreferrer"
                     className="shrink-0 rounded p-1 transition-colors hover:bg-accent"
-                    title="View on Arcscan Testnet"
+                    title="View on Arc Explorer"
                   >
                     <ExternalLink size={14} />
                   </a>

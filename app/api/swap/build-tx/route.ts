@@ -4,6 +4,10 @@ import {
   buildTowerDexSwapTransaction,
   isTowerDexQuote,
 } from "@/lib/towerDex";
+import {
+  buildAeroSwapTransaction,
+  isAeroQuote,
+} from "@/lib/aeroDex";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 import {
@@ -99,6 +103,7 @@ const refreshSwapQuote = async (
           requestedSlippage ?? quote.slippage,
         ),
         dexId: getQuoteDexId(quote),
+        chainId: isAeroQuote(quote) ? 5042 : undefined,
       }),
     }),
   );
@@ -169,6 +174,29 @@ export async function handleSwapBuildTxPost(
       asString(freshQuote.inputAmountNative) ||
       asString(freshQuote.inputAmountRaw) ||
       asString(freshQuote.swapInputAmountNative);
+
+    if (isAeroQuote(freshQuote)) {
+      if (!userAddress) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing userAddress for Aero swap",
+            code: SWAP_API_ERROR_CODES.INVALID_REQUEST,
+          },
+          { status: 400 },
+        );
+      }
+
+      const transactions = await buildAeroSwapTransaction({
+        quote: freshQuote,
+        userAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: boundBuildTxApprovals(transactions, exactApprovalAmount),
+      });
+    }
 
     if (isTowerDexQuote(freshQuote)) {
       if (!userAddress) {

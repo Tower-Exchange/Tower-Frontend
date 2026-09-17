@@ -35,13 +35,13 @@ export const SWAP_TOKENS: readonly SwapToken[] = [
     balance: 750,
     usdPrice: DEFAULT_TOKEN_USD_PRICES.EURC,
   },
-  {
-    symbol: "USDT",
-    icon: usdtLogo,
-    name: "Tether USD",
-    balance: 500,
-    usdPrice: DEFAULT_TOKEN_USD_PRICES.USDT,
-  },
+  // {
+  //   symbol: "USDT",
+  //   icon: usdtLogo,
+  //   name: "Tether USD",
+  //   balance: 500,
+  //   usdPrice: DEFAULT_TOKEN_USD_PRICES.USDT,
+  // },
   {
     symbol: "cirBTC",
     icon: cirbtcLogo,

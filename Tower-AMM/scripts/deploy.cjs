@@ -18,6 +18,12 @@ const TESTNET_TOKENS = {
   QCAD: "0x23d7CFFd0876f3ABb6B074287ba2aeefBc83825d",
 };
 
+const MAINNET_TOKENS = {
+  USDC: ARC_USDC,
+  EURC: "0xbEf5f6d51CB62b58e6A8f77868681825C6fe21c1",
+  CIRBTC: "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+};
+
 const TESTNET_ONLY_TOKEN_ADDRESSES = new Set(
   ["EURC", "USDT", "CIRBTC", "CNGN", "QCAD"].map((symbol) =>
     TESTNET_TOKENS[symbol].toLowerCase(),
@@ -46,7 +52,11 @@ function parseBoolean(value, fallback) {
 
 function defaultPairs() {
   if (network.name === "arc-mainnet") {
-    return [];
+    return [
+      ["USDC", "EURC"],
+      ["USDC", "CIRBTC"],
+      ["EURC", "CIRBTC"],
+    ];
   }
 
   return [
@@ -105,13 +115,13 @@ function resolveTokenAddress(symbol) {
       console.warn(
         `Ignoring ${envName}=${fromEnv} on arc-mainnet. That is the testnet ${symbol} token.`,
       );
-      return "";
+    } else {
+      return fromEnv;
     }
-    return fromEnv;
   }
 
   if (network.name === "arc-mainnet") {
-    return symbol === "USDC" ? ARC_USDC : "";
+    return MAINNET_TOKENS[symbol] || "";
   }
 
   return TESTNET_TOKENS[symbol] || "";
