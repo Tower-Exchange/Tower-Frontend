@@ -1,36 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getAeroUsdSpotPrices } from "@/lib/aeroDex";
+import { DEFAULT_TOKEN_USD_PRICES } from "@/lib/tokenUsdPrices";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
-
-const COINGECKO_PRICE_URL =
-  "https://api.coingecko.com/api/v3/simple/price?ids=usd-coin,eurc,tether&vs_currencies=usd";
 
 export async function getPricesResponse() {
   try {
-    const response = await fetch(COINGECKO_PRICE_URL, {
-      headers: {
-        "accept": "application/json",
-      },
-      next: { revalidate: 60 },
+    const aeroPrices = await getAeroUsdSpotPrices();
+    const EURC = aeroPrices.EURC ?? DEFAULT_TOKEN_USD_PRICES.EURC;
+    const cirBTC = aeroPrices.cirBTC ?? DEFAULT_TOKEN_USD_PRICES.cirBTC;
+
+    return NextResponse.json({
+      USDC: 1,
+      EURC,
+      USDT: DEFAULT_TOKEN_USD_PRICES.USDT,
+      cirBTC,
+      cNGN: DEFAULT_TOKEN_USD_PRICES.cNGN,
+      QCAD: DEFAULT_TOKEN_USD_PRICES.QCAD,
+      "usd-coin": { usd: 1 },
+      eurc: { usd: EURC },
+      tether: { usd: DEFAULT_TOKEN_USD_PRICES.USDT },
     });
-
-    if (!response.ok) {
-      return NextResponse.json(
-        { error: "Failed to fetch prices from CoinGecko" },
-        { status: response.status },
-      );
-    }
-
-    const prices = (await response.json()) as {
-      "usd-coin"?: { usd?: number };
-      eurc?: { usd?: number };
-      tether?: { usd?: number };
-    };
-
-    return NextResponse.json(prices);
   } catch (error) {
-    console.error("Failed to fetch CoinGecko prices", error);
+    console.error("Failed to fetch Aero DEX prices", error);
     return NextResponse.json(
-      { error: "Failed to fetch prices from CoinGecko" },
+      { error: "Failed to fetch Aero DEX prices" },
       { status: 502 },
     );
   }

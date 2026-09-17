@@ -14,7 +14,6 @@ import {
   remapChainForNetwork,
 } from "@/lib/bridgeNetworks";
 import { getBridgeSelectChains } from "@/lib/bridgeChainUi";
-import BridgeNetworkTabs from "@/components/BridgeNetworkTabs";
 import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
 
 type Chain = {
@@ -38,7 +37,6 @@ export default function BridgeSelectContent() {
   );
   const {
     mode: storedNetworkMode,
-    setNetworkMode,
     isReady: isNetworkModeReady,
   } = useTowerNetworkMode();
   const chains = useMemo(
@@ -65,44 +63,6 @@ export default function BridgeSelectContent() {
     return DEFAULT_BRIDGE_CHAIN[mode];
   });
   const [isChainModalOpen, setIsChainModalOpen] = useState(false);
-
-  const handleNetworkModeChange = useCallback(
-    (mode: BridgeNetworkMode) => {
-      setNetworkMode(mode);
-      setLocalNetworkMode(mode);
-      const nextSelected =
-        selectedChainId === "all"
-          ? selectedChainId
-          : remapChainForNetwork(selectedChainId, mode) ||
-            DEFAULT_BRIDGE_CHAIN[mode];
-      setSelectedChainId(nextSelected);
-
-      const current = new URLSearchParams(Array.from(searchParams.entries()));
-      current.set("network", mode);
-      if (nextSelected && nextSelected !== "all") {
-        current.set(`${side}Chain`, nextSelected);
-      }
-      const remappedOpposite = remapChainForNetwork(
-        searchParams.get(`${oppositeSide}Chain`),
-        mode,
-      );
-      if (
-        remappedOpposite &&
-        remappedOpposite !== "all" &&
-        remappedOpposite !== nextSelected
-      ) {
-        current.set(`${oppositeSide}Chain`, remappedOpposite);
-      } else if (
-        remappedOpposite &&
-        remappedOpposite !== "all" &&
-        remappedOpposite === nextSelected
-      ) {
-        current.delete(`${oppositeSide}Chain`);
-      }
-      router.replace(`/bridge/select?${current.toString()}`);
-    },
-    [oppositeSide, router, searchParams, selectedChainId, setNetworkMode, side],
-  );
 
   useEffect(() => {
     if (!isNetworkModeReady || storedNetworkMode === networkMode) {
@@ -226,10 +186,6 @@ export default function BridgeSelectContent() {
         {/* Left: chain list */}
         <aside className="hidden md:flex w-64 flex-col border-r border-border/70 bg-[#101113] h-screen max-h-screen">
           <div className="px-4 py-4 border-b border-border/60 space-y-3">
-            <BridgeNetworkTabs
-              mode={networkMode}
-              onChange={handleNetworkModeChange}
-            />
             <div className="relative">
               <span className="pointer-events-none absolute inset-y-0 left-3 flex items-center text-muted-foreground">
                 <Search className="h-4 w-4" />
@@ -340,10 +296,6 @@ export default function BridgeSelectContent() {
 
           {/* Mobile chain selector */}
           <div className="md:hidden px-5 py-3 border-b border-border/60 space-y-3">
-            <BridgeNetworkTabs
-              mode={networkMode}
-              onChange={handleNetworkModeChange}
-            />
             <button
               type="button"
               onClick={() => setIsChainModalOpen(true)}

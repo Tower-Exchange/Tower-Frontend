@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { HeaderWalletAvatar } from "@/components/wallet/TowerWalletAvatar";
+import ArcNetworkSwitcher from "@/components/ArcNetworkSwitcher";
 // import ThemeToggle from "@/components/ThemeToggle";
 import ThemeAwareImage from "@/components/ThemeAwareImage";
 
@@ -291,6 +292,13 @@ const Header = () => {
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
+          <div className="md:hidden">
+            <ArcNetworkSwitcher compact />
+          </div>
+          <div className="hidden md:block">
+            <ArcNetworkSwitcher />
+          </div>
+
           {/* Settings Button */}
           <motion.button
             className="hidden sm:block p-2 rounded-lg hover:bg-secondary transition-colors"

@@ -798,7 +798,11 @@ export async function handleSwapQuotePost(request: NextRequest) {
     };
     const normalizedRequestedDexId = normalizeDexId(dexId);
     const parsedChainId = Number(chainId);
-    const isArcMainnet = parsedChainId === AERO_CHAIN_ID;
+    const resolvedChainId =
+      Number.isFinite(parsedChainId) && parsedChainId > 0
+        ? parsedChainId
+        : AERO_CHAIN_ID;
+    const isArcMainnet = resolvedChainId === AERO_CHAIN_ID;
 
     if (!inputToken || !outputToken || !inputAmount) {
       return NextResponse.json(
@@ -824,8 +828,8 @@ export async function handleSwapQuotePost(request: NextRequest) {
       slippageTolerance ?? slippage,
     );
 
-    const resolvedInputToken = resolveTokenAddress(inputToken, parsedChainId);
-    const resolvedOutputToken = resolveTokenAddress(outputToken, parsedChainId);
+    const resolvedInputToken = resolveTokenAddress(inputToken, resolvedChainId);
+    const resolvedOutputToken = resolveTokenAddress(outputToken, resolvedChainId);
 
     if (!resolvedInputToken || !resolvedOutputToken) {
       return NextResponse.json(
@@ -846,7 +850,7 @@ export async function handleSwapQuotePost(request: NextRequest) {
       inputToken: resolvedInputToken,
       outputToken: resolvedOutputToken,
       inputAmount,
-      chainId: parsedChainId || undefined,
+      chainId: resolvedChainId,
       dexId: backendDexRequest,
       backendDexIds,
       backendUrl: BACKEND_URL,

@@ -15,11 +15,11 @@ const NETWORK_OPTIONS: Array<{
   label: string;
   description: string;
 }> = [
-  {
-    id: "testnet",
-    label: "Arc Testnet",
-    description: "Chain ID 5042002",
-  },
+  // {
+  //   id: "testnet",
+  //   label: "Arc Testnet",
+  //   description: "Chain ID 5042002",
+  // },
   {
     id: "mainnet",
     label: "Arc Mainnet",

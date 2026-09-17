@@ -11,7 +11,10 @@ import {
   type PublicClient,
 } from "viem";
 
-import { quoteExactInputOnPool } from "@/lib/aeroQuoteMath";
+import {
+  quoteExactInputOnPool,
+  token1PerToken0FromSqrtPriceX96,
+} from "@/lib/aeroQuoteMath";
 import { ARC_MAINNET_CONFIG, TOKEN_CONTRACTS } from "@/lib/arcNetwork";
 import { ARC_MAINNET_RPC_ENDPOINTS, ARC_MAINNET_RPC_PROXY_PATH } from "@/lib/arcRpc";
 import { BRIDGE_EURC_ADDRESSES } from "@/lib/bridgeNetworks";
@@ -525,6 +528,12 @@ export function getAeroTokenDecimals(address: string) {
   return AERO_TOKEN_DECIMALS[address.toLowerCase()] ?? 18;
 }
 
+const AERO_TESTNET_ADDRESS_ALIASES: Record<string, Address> = {
+  [TOKEN_CONTRACTS.CIRBTC.toLowerCase()]: AERO_MAINNET_TOKENS.cirBTC,
+  [TOKEN_CONTRACTS.cirBTC.toLowerCase()]: AERO_MAINNET_TOKENS.cirBTC,
+  [TOKEN_CONTRACTS.EURC.toLowerCase()]: AERO_MAINNET_TOKENS.EURC,
+};
+
 export function getAeroMainnetTokenAddress(symbol?: string | null) {
   if (!symbol) {
     return undefined;
@@ -532,7 +541,8 @@ export function getAeroMainnetTokenAddress(symbol?: string | null) {
 
   const normalized = symbol.trim();
   if (isAddress(normalized)) {
-    return getAddress(normalized);
+    const aliased = AERO_TESTNET_ADDRESS_ALIASES[normalized.toLowerCase()];
+    return aliased ?? getAddress(normalized);
   }
 
   const mapped =
@@ -544,7 +554,7 @@ export function getAeroMainnetTokenAddress(symbol?: string | null) {
 
 export function getArcSwapTokenAddress(
   symbol: string,
-  mode: "testnet" | "mainnet" = "testnet",
+  mode: "testnet" | "mainnet" = "mainnet",
 ) {
   if (mode === "mainnet") {
     return getAeroMainnetTokenAddress(symbol) ?? TOKEN_CONTRACTS[symbol];
@@ -670,6 +680,75 @@ const knownTickSpacingsForPair = (tokenIn: Address, tokenOut: Address) => {
     );
   }).map((entry) => entry.tickSpacing);
 };
+
+async function getUsdPriceFromUsdcPool(
+  client: PublicClient,
+  token: Address,
+) {
+  const usdc = AERO_MAINNET_TOKENS.USDC.toLowerCase();
+  const tokenKey = token.toLowerCase();
+  const knownPool = AERO_KNOWN_POOLS.find((entry) => {
+    const tokenA = entry.tokenA.toLowerCase();
+    const tokenB = entry.tokenB.toLowerCase();
+    return (
+      (tokenA === usdc && tokenB === tokenKey) ||
+      (tokenB === usdc && tokenA === tokenKey)
+    );
+  });
+
+  if (!knownPool) {
+    return null;
+  }
+
+  const pool = getAddress(knownPool.pool);
+  const [slot0, token0Address] = await Promise.all([
+    client.readContract({
+      address: pool,
+      abi: AERO_POOL_ABI,
+      functionName: "slot0",
+    }),
+    client.readContract({
+      address: pool,
+      abi: AERO_POOL_ABI,
+      functionName: "token0",
+    }),
+  ]);
+
+  const sqrtPriceX96 = slot0[0];
+  const token0 = getAddress(token0Address as Address);
+  const token1 =
+    token0.toLowerCase() === usdc ? token : AERO_MAINNET_TOKENS.USDC;
+  const token1PerToken0 = token1PerToken0FromSqrtPriceX96(
+    sqrtPriceX96,
+    getAeroTokenDecimals(token0),
+    getAeroTokenDecimals(token1),
+  );
+
+  if (!Number.isFinite(token1PerToken0) || token1PerToken0 <= 0) {
+    return null;
+  }
+
+  return token0.toLowerCase() === usdc ? 1 / token1PerToken0 : token1PerToken0;
+}
+
+export async function getAeroUsdSpotPrices(client?: PublicClient) {
+  const aeroClient = client ?? createAeroPublicClient();
+
+  const [EURC, cirBTC] = await Promise.all([
+    getUsdPriceFromUsdcPool(aeroClient, AERO_MAINNET_TOKENS.EURC).catch(
+      () => null,
+    ),
+    getUsdPriceFromUsdcPool(aeroClient, AERO_MAINNET_TOKENS.cirBTC).catch(
+      () => null,
+    ),
+  ]);
+
+  return {
+    USDC: 1,
+    EURC,
+    cirBTC,
+  };
+}
 
 async function getAeroPoolAddress(
   client: PublicClient,
