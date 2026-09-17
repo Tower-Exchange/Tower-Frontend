@@ -1,7 +1,7 @@
 "use client";
 import {
   ArrowDown,
-  BarChart3,
+  // BarChart3,
   Clock,
   Settings,
   ChevronDown,
@@ -37,7 +37,7 @@ import {
 } from "@/lib/swapTokens";
 import TokenModal from "./TokenModal";
 import SettingsModal from "./SettingsModal";
-import ChartModal from "./ChartModal";
+// import ChartModal from "./ChartModal";
 import TokenInput from "./reusable/TokenInput";
 import SwapNotification from "./SwapNotification";
 import RouterDisplay from "./RouterDisplay";
@@ -1274,7 +1274,7 @@ const SwapCard = ({
 
   // Modal states
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isChartOpen, setIsChartOpen] = useState(false);
+  // const [isChartOpen, setIsChartOpen] = useState(false);
   const [isActivityOpen, setIsActivityOpen] = useState(false);
   const [isSellTokenModalOpen, setIsSellTokenModalOpen] = useState(false);
   const [isReceiveTokenModalOpen, setIsReceiveTokenModalOpen] = useState(false);
@@ -3116,6 +3116,7 @@ const SwapCard = ({
                   </span>
                 ) : null}
               </motion.button>
+              {/* Chart icon — uncomment later
               <motion.button
                 onClick={() => setIsChartOpen(!isChartOpen)}
                 className="p-2 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
@@ -3124,6 +3125,7 @@ const SwapCard = ({
               >
                 <BarChart3 className="w-5 h-5 text-foreground" />
               </motion.button>
+              */}
               <motion.button
                 onClick={() => setIsSettingsOpen(true)}
                 className="p-2 rounded-lg hover:bg-secondary transition-colors cursor-pointer"
@@ -3333,6 +3335,7 @@ const SwapCard = ({
         />
       </div>
 
+      {/* Chart modal — uncomment later with the chart icon
       <AnimatePresence>
         {isChartOpen && (
           <ChartModal
@@ -3341,6 +3344,7 @@ const SwapCard = ({
           />
         )}
       </AnimatePresence>
+      */}
     </div>
   );
 };
