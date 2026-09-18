@@ -830,6 +830,11 @@ export function isTowerDexQuote(quote: unknown): quote is TowerDexQuote {
     return false;
   }
 
+  const dzap = (quote as { dzap?: { source?: string } }).dzap;
+  if (dzap?.source === "dzap") {
+    return false;
+  }
+
   const route = (quote as TowerDexQuote).route;
   const hop = route?.hops?.[0];
   return normalizeTowerDexId(hop?.dexId || hop?.dexName) === TOWER_DEX_ID;

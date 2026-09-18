@@ -12,6 +12,7 @@ const SECURITY_HEADERS = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  serverExternalPackages: ["@dzapio/sdk"],
   images: {
     domains: [
       "udebjfrhnwqoawziuhgu.supabase.co", // Supabase storage domain

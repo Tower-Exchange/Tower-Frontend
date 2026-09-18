@@ -245,6 +245,28 @@ function savedAeroAdapter() {
   );
 }
 
+function savedDzapAdapter() {
+  return readJson(
+    path.join(
+      __dirname,
+      "..",
+      "deployments",
+      "dzap-adapter-arc-mainnet-deployment.json",
+    ),
+  );
+}
+
+function savedLiFiAdapter() {
+  return readJson(
+    path.join(
+      __dirname,
+      "..",
+      "deployments",
+      "lifi-adapter-arc-mainnet-deployment.json",
+    ),
+  );
+}
+
 function savedUnitFlowMainnet() {
   return readJson(
     path.join(__dirname, "..", "deployments", "unitflow-arc-mainnet.json"),
@@ -287,12 +309,16 @@ function resolveAllowlist(kind) {
 
   const adapter = savedMainnetAdapter()?.adapter;
   const aeroAdapter = savedAeroAdapter()?.adapter;
+  const dzapAdapter = savedDzapAdapter()?.adapter;
+  const lifiAdapter = savedLiFiAdapter()?.adapter;
   const router = savedMainnetAmm()?.router;
   const unitflowRouter = savedUnitFlowMainnet()?.v3?.swapRouter;
   const aeroSwapRouter = "0xb4702E1375F712da2e0d5F534c30c0c1513EdB2B";
   const routeDefaults = [
     adapter,
     aeroAdapter,
+    dzapAdapter,
+    lifiAdapter,
     SYNTHRA_MAINNET.universalRouter,
     SYNTHRA_MAINNET.swapRouter02,
     unitflowRouter,
@@ -301,6 +327,8 @@ function resolveAllowlist(kind) {
   const spenderDefaults = [
     adapter,
     aeroAdapter,
+    dzapAdapter,
+    lifiAdapter,
     SYNTHRA_MAINNET.permit2,
     SYNTHRA_MAINNET.swapRouter02,
     SYNTHRA_MAINNET.universalRouter,

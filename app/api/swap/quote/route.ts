@@ -25,6 +25,18 @@ import {
   AERO_DEX_NAME,
   type AeroQuote,
 } from "@/lib/aeroDex";
+import {
+  getDzapQuote,
+  isDzapEnabled,
+  type DzapQuote,
+} from "@/lib/dzapDex";
+import {
+  getXylonetQuote,
+  isXylonetEnabled,
+  XYLONET_DEX_ID,
+  XYLONET_DEX_NAME,
+  type XylonetQuote,
+} from "@/lib/xylonetDex";
 
 type BackendQuote = {
   inputToken: string;
@@ -66,6 +78,8 @@ type BackendQuote = {
     }>;
   };
   routeOptions?: RouteOption[];
+  dzap?: DzapQuote["dzap"];
+  xylonet?: XylonetQuote["xylonet"];
 };
 
 type RouteOption = {
@@ -201,6 +215,52 @@ const aeroQuoteToBackendQuote = (quote: AeroQuote): BackendQuote => ({
   route: quote.route,
 });
 
+const dzapQuoteToBackendQuote = (quote: DzapQuote): BackendQuote => ({
+  inputToken: quote.inputToken,
+  outputToken: quote.outputToken,
+  inputAmount: quote.inputAmount,
+  swapInputAmount: quote.swapInputAmount,
+  outputAmount: quote.outputAmount,
+  minOut: quote.minOut,
+  inputAmountNative: quote.inputAmountNative,
+  swapInputAmountNative: quote.swapInputAmountNative,
+  outputAmountNative: quote.outputAmountNative,
+  minOutNative: quote.minOutNative,
+  priceImpact: quote.priceImpact,
+  gasEstimate: quote.gasEstimate,
+  slippage: quote.slippage,
+  feeMode: quote.feeMode,
+  feeBps: quote.feeBps,
+  feeRecipient: quote.feeRecipient,
+  platformFeeAmount: quote.platformFeeAmount,
+  platformFeeAmountNative: quote.platformFeeAmountNative,
+  dzap: quote.dzap,
+  route: quote.route,
+});
+
+const xylonetQuoteToBackendQuote = (quote: XylonetQuote): BackendQuote => ({
+  inputToken: quote.inputToken,
+  outputToken: quote.outputToken,
+  inputAmount: quote.inputAmount,
+  swapInputAmount: quote.swapInputAmount,
+  outputAmount: quote.outputAmount,
+  minOut: quote.minOut,
+  inputAmountNative: quote.inputAmountNative,
+  swapInputAmountNative: quote.swapInputAmountNative,
+  outputAmountNative: quote.outputAmountNative,
+  minOutNative: quote.minOutNative,
+  priceImpact: quote.priceImpact,
+  gasEstimate: quote.gasEstimate,
+  slippage: quote.slippage,
+  feeMode: quote.feeMode,
+  feeBps: quote.feeBps,
+  feeRecipient: quote.feeRecipient,
+  platformFeeAmount: quote.platformFeeAmount,
+  platformFeeAmountNative: quote.platformFeeAmountNative,
+  xylonet: quote.xylonet,
+  route: quote.route,
+});
+
 async function fetchLocalAeroQuote(params: {
   inputToken: string;
   outputToken: string;
@@ -257,6 +317,126 @@ async function supplementWithLocalTowerDexQuote(params: {
   return {
     quotes: dedupeQuotesByDex([...params.quotes, localQuote]),
     routeOptions: dedupeRouteOptions([...params.routeOptions, localRouteOption]),
+  };
+}
+
+async function fetchDzapAggregatorQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+}): Promise<BackendQuote | null> {
+  if (!isDzapEnabled()) {
+    return null;
+  }
+
+  const quote = await getDzapQuote({
+    inputToken: params.inputToken,
+    outputToken: params.outputToken,
+    inputAmount: params.inputAmount,
+    slippageBps: params.slippageTolerance,
+    chainId: params.chainId,
+  });
+
+  return quote ? dzapQuoteToBackendQuote(quote) : null;
+}
+
+async function fetchXylonetAggregatorQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+}): Promise<BackendQuote | null> {
+  if (!isXylonetEnabled()) {
+    return null;
+  }
+
+  const quote = await getXylonetQuote({
+    inputToken: params.inputToken,
+    outputToken: params.outputToken,
+    inputAmount: params.inputAmount,
+    slippageBps: params.slippageTolerance,
+    chainId: params.chainId,
+  });
+
+  return quote ? xylonetQuoteToBackendQuote(quote) : null;
+}
+
+async function supplementWithDzapQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+  requestedDexId?: string;
+  quotes: BackendQuote[];
+  routeOptions: RouteOption[];
+}) {
+  if (params.requestedDexId && params.requestedDexId !== TOWER_DEX_ID) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const dzapQuote = await fetchDzapAggregatorQuote(params);
+  if (!dzapQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const dzapRouteOption = routeOptionFromQuote(dzapQuote);
+
+  return {
+    quotes: dedupeQuotesByDex([...params.quotes, dzapQuote]),
+    routeOptions: dedupeRouteOptions([...params.routeOptions, dzapRouteOption]),
+  };
+}
+
+async function supplementWithXylonetQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+  requestedDexId?: string;
+  quotes: BackendQuote[];
+  routeOptions: RouteOption[];
+}) {
+  if (params.requestedDexId && params.requestedDexId !== XYLONET_DEX_ID) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const hasXylonetQuote = params.routeOptions.some(
+    (option) => normalizeDexId(option.dexId || option.dexName) === XYLONET_DEX_ID,
+  );
+  if (hasXylonetQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const xylonetQuote = await fetchXylonetAggregatorQuote(params);
+  if (!xylonetQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const xylonetRouteOption = routeOptionFromQuote(xylonetQuote);
+
+  return {
+    quotes: dedupeQuotesByDex([...params.quotes, xylonetQuote]),
+    routeOptions: dedupeRouteOptions([...params.routeOptions, xylonetRouteOption]),
   };
 }
 
@@ -437,8 +617,8 @@ const routeOptionFromQuote = (quote: QuoteLike): RouteOption => {
         ? "Synthra"
         : normalizedDexId === "unitflow"
           ? "UnitFlow"
-          : normalizedDexId === "xylonet-adapter"
-            ? "Xylonet"
+          : normalizedDexId === XYLONET_DEX_ID
+            ? XYLONET_DEX_NAME
             : normalizedDexId === TOWER_DEX_ID
               ? TOWER_DEX_NAME
               : normalizedDexId === AERO_DEX_ID
@@ -901,11 +1081,57 @@ export async function handleSwapQuotePost(request: NextRequest) {
     }
 
     if (isArcMainnet) {
-      backendResult = await supplementWithLocalAeroQuote({
+      const [aeroResult, dzapResult, xylonetResult] = await Promise.all([
+        supplementWithLocalAeroQuote({
+          inputToken: resolvedInputToken,
+          outputToken: resolvedOutputToken,
+          inputAmount,
+          slippageTolerance: resolvedSlippageBps,
+          requestedDexId: backendDexRequest,
+          quotes: backendResult.quotes,
+          routeOptions: backendResult.routeOptions,
+        }),
+        supplementWithDzapQuote({
+          inputToken: resolvedInputToken,
+          outputToken: resolvedOutputToken,
+          inputAmount,
+          slippageTolerance: resolvedSlippageBps,
+          chainId: resolvedChainId,
+          requestedDexId: backendDexRequest,
+          quotes: backendResult.quotes,
+          routeOptions: backendResult.routeOptions,
+        }),
+        supplementWithXylonetQuote({
+          inputToken: resolvedInputToken,
+          outputToken: resolvedOutputToken,
+          inputAmount,
+          slippageTolerance: resolvedSlippageBps,
+          chainId: resolvedChainId,
+          requestedDexId: backendDexRequest,
+          quotes: backendResult.quotes,
+          routeOptions: backendResult.routeOptions,
+        }),
+      ]);
+
+      backendResult = {
+        quotes: dedupeQuotesByDex([
+          ...aeroResult.quotes,
+          ...dzapResult.quotes,
+          ...xylonetResult.quotes,
+        ]),
+        routeOptions: dedupeRouteOptions([
+          ...aeroResult.routeOptions,
+          ...dzapResult.routeOptions,
+          ...xylonetResult.routeOptions,
+        ]),
+      };
+    } else {
+      backendResult = await supplementWithDzapQuote({
         inputToken: resolvedInputToken,
         outputToken: resolvedOutputToken,
         inputAmount,
         slippageTolerance: resolvedSlippageBps,
+        chainId: resolvedChainId,
         requestedDexId: backendDexRequest,
         quotes: backendResult.quotes,
         routeOptions: backendResult.routeOptions,
@@ -965,7 +1191,10 @@ export async function handleSwapQuotePost(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: `No valid ${normalizedRequestedDexId} route found for this swap`,
+          error:
+            normalizedRequestedDexId === TOWER_DEX_ID
+              ? "Tower route is temporarily unavailable. Wait a few seconds and try again."
+              : `No valid ${normalizedRequestedDexId} route found for this swap`,
           data: { routeOptions },
         },
         { status: 404 },

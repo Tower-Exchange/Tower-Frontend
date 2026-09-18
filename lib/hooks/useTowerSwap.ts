@@ -32,6 +32,37 @@ export interface SwapQuote {
   outputAmountNative?: string;
   minOutNative?: string;
   feeRecipient?: string;
+  dzap?: {
+    source: "dzap";
+    fromChain: number;
+    toChain: number;
+    protocol: string;
+    bestReturnSource?: string;
+    additionalInfo?: Record<string, unknown>;
+    srcDecimals: number;
+    destDecimals: number;
+    slippagePercent: number;
+    amount: string;
+    srcToken: string;
+    destToken: string;
+    providerName?: string;
+  };
+  xylonet?: {
+    source: "lifi";
+    fromChain: number;
+    toChain: number;
+    integrator: string;
+    protocol: string;
+    approvalAddress: string;
+    srcDecimals: number;
+    destDecimals: number;
+    slippagePercent: number;
+    amount: string;
+    srcToken: string;
+    destToken: string;
+    quoteId?: string;
+    tool?: string;
+  };
   route: {
     type: 'single' | 'multi' | 'split';
     rawPath?: string;

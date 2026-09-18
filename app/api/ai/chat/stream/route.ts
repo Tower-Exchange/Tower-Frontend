@@ -12,6 +12,7 @@ import {
   classifyTowerAiFetchError,
   fetchTowerAi,
   getTowerAiStreamUrl,
+  getTowerAiClientIp,
   logTowerAiProxyError,
   rejectNonFrontendAiRequest,
 } from "@/lib/server/towerAiBackend";
@@ -67,7 +68,12 @@ export async function POST(request: NextRequest) {
 
     const body = buildTowerAiChatRequestBody(rawBody, wallet, sanitizedMessage);
 
-    const response = await fetchTowerAi(streamUrl, body);
+    const response = await fetchTowerAi(
+      streamUrl,
+      body,
+      undefined,
+      getTowerAiClientIp(request),
+    );
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({

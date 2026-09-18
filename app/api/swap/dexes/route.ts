@@ -7,6 +7,12 @@ import {
   TOWER_DEX_NAME,
 } from "@/lib/towerDex";
 import { getAeroDexInfo, AERO_DEX_ID, AERO_DEX_NAME } from "@/lib/aeroDex";
+import {
+  getXylonetDexInfo,
+  isXylonetEnabled,
+  XYLONET_DEX_ID,
+  XYLONET_DEX_NAME,
+} from "@/lib/xylonetDex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
@@ -75,6 +81,13 @@ const getCanonicalAeroDex = (): DexInfo => ({
   enabled: true,
 });
 
+const getCanonicalXylonetDex = (): DexInfo => ({
+  ...getXylonetDexInfo(),
+  id: XYLONET_DEX_ID,
+  name: XYLONET_DEX_NAME,
+  enabled: isXylonetEnabled(),
+});
+
 const isExecutorUnsupportedDexId = (id: string) =>
   id === "unitflow" && !UNITFLOW_EXECUTOR_ENABLED;
 
@@ -114,6 +127,20 @@ const normalizeDex = (dex: DexInfo): DexInfo => {
       ...dex,
       id: AERO_DEX_ID,
       name: AERO_DEX_NAME,
+      enabled: dex.enabled !== false,
+    };
+  }
+
+  if (
+    id === XYLONET_DEX_ID ||
+    id === "xylonet" ||
+    name.includes("xylonet") ||
+    name.includes("xylo")
+  ) {
+    return {
+      ...dex,
+      id: XYLONET_DEX_ID,
+      name: XYLONET_DEX_NAME,
       enabled: dex.enabled !== false,
     };
   }
@@ -161,11 +188,13 @@ export async function getSwapDexesResponse() {
     const unitFlowDex = getCanonicalUnitFlowDex();
     const towerDex = isTowerDexEnabled() ? getCanonicalTowerDex() : null;
     const aeroDex = getCanonicalAeroDex();
+    const xylonetDex = isXylonetEnabled() ? getCanonicalXylonetDex() : null;
     const localDexes = [
       synthraDex,
       unitFlowDex,
       ...(towerDex ? [towerDex] : []),
       aeroDex,
+      ...(xylonetDex ? [xylonetDex] : []),
     ];
 
     if (SWAPS_DISABLED) {
@@ -220,6 +249,7 @@ export async function getSwapDexesResponse() {
   } catch (error) {
     console.error('Error fetching DEXes:', error);
     const towerDex = isTowerDexEnabled() ? [getCanonicalTowerDex()] : [];
+    const xylonetDex = isXylonetEnabled() ? [getCanonicalXylonetDex()] : [];
     return NextResponse.json({
       success: true,
       data: [
@@ -227,6 +257,7 @@ export async function getSwapDexesResponse() {
         getCanonicalUnitFlowDex(),
         ...towerDex,
         getCanonicalAeroDex(),
+        ...xylonetDex,
       ],
     });
   }

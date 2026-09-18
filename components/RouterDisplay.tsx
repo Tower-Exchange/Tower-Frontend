@@ -143,6 +143,8 @@ const getRouteUsdValue = (amount?: string, outputTokenUsdPrice?: number) => {
 const formatRouteUsdValue = (usdValue: number | null) =>
   usdValue === null ? null : formatUsdAmount(usdValue, 1);
 
+const roundUsdToCents = (usdValue: number) => Math.round(usdValue * 100);
+
 const formatRouteAddedValue = (
   routeUsdValue: number | null,
   inputUsdValue?: number,
@@ -156,17 +158,16 @@ const formatRouteAddedValue = (
     return null;
   }
 
-  const addedValue = routeUsdValue - inputUsdValue;
+  const extraCents = roundUsdToCents(routeUsdValue) - roundUsdToCents(inputUsdValue);
 
-  if (!Number.isFinite(addedValue) || addedValue <= 0) {
+  if (extraCents <= 0) {
     return null;
   }
 
-  return `+${formatUsdAmount(addedValue, 1)}`;
+  return `+${formatUsdAmount(extraCents / 100, 1)}`;
 };
 
 export default function RouterDisplay({
-  selectedRouterId,
   routeOptions = [],
   inputUsdValue,
   outputTokenUsdPrice,
@@ -211,6 +212,9 @@ export default function RouterDisplay({
     new Set(availableRouterIds.map((routerId) => normalizeRouterId(routerId))),
   );
   const availableRouterIdSet = new Set(normalizedAvailableRouterIds);
+  const priorityIndexByDexId = new Map(
+    normalizedAvailableRouterIds.map((routerId, index) => [routerId, index]),
+  );
   const routeIdsFromOptions = Array.from(routeOptionByDexId.keys());
   const routerCandidates = [
     ...SUPPORTED_ROUTERS.filter((router) =>
@@ -249,21 +253,22 @@ export default function RouterDisplay({
     })
     .filter((route) => route.option !== null && route.hasQuote)
     .sort((leftRoute, rightRoute) => {
-      if (leftRoute.hasQuote && rightRoute.hasQuote) {
-        if (leftRoute.outputAmount === rightRoute.outputAmount) {
-          const leftFallback = leftRoute.option?.isFallback === true;
-          const rightFallback = rightRoute.option?.isFallback === true;
-          if (leftFallback !== rightFallback) {
-            return leftFallback ? 1 : -1;
-          }
-          return leftRoute.index - rightRoute.index;
-        }
-
+      if (leftRoute.outputAmount !== rightRoute.outputAmount) {
         return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
       }
 
-      if (leftRoute.hasQuote !== rightRoute.hasQuote) {
-        return leftRoute.hasQuote ? -1 : 1;
+      const leftFallback = leftRoute.option?.isFallback === true;
+      const rightFallback = rightRoute.option?.isFallback === true;
+      if (leftFallback !== rightFallback) {
+        return leftFallback ? 1 : -1;
+      }
+
+      const leftPriority =
+        priorityIndexByDexId.get(leftRoute.router.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightPriority =
+        priorityIndexByDexId.get(rightRoute.router.id) ?? Number.MAX_SAFE_INTEGER;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
       }
 
       return leftRoute.index - rightRoute.index;
@@ -274,12 +279,8 @@ export default function RouterDisplay({
   }
 
   const displayedRoutes = allQuotedRoutes.slice(0, 3);
-  const bestQuotedRoute = allQuotedRoutes[0] ?? null;
-  const bestOutputAmount = bestQuotedRoute?.outputAmount ?? 0n;
-  const bestPriceRouterId = bestQuotedRoute?.router.id;
-  const normalizedSelectedRouterId = selectedRouterId
-    ? normalizeRouterId(selectedRouterId)
-    : undefined;
+  const bestQuotedRoute = allQuotedRoutes[0];
+  const bestPriceRouterId = bestQuotedRoute.router.id;
   const dexCount = allQuotedRoutes.length;
   const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
   const otherDexNames = allQuotedRoutes.slice(1).map(({ router }) => router.name);
@@ -365,23 +366,16 @@ export default function RouterDisplay({
       </div>
 
       <div className="space-y-1 p-1.5">
-        {displayedRoutes.map(({ router, option, outputAmount, hasQuote }) => {
-          const isBestPrice =
-            hasQuote &&
-            outputAmount > 0n &&
-            outputAmount === bestOutputAmount &&
-            router.id === bestPriceRouterId;
-          const isSelected =
-            normalizedSelectedRouterId === router.id ||
-            (!normalizedSelectedRouterId && isBestPrice);
+        {displayedRoutes.map(({ router, option, hasQuote }) => {
+          const isBestPrice = router.id === bestPriceRouterId;
+          const isSelected = isBestPrice;
           const routeUsdAmount = hasQuote
             ? getRouteUsdValue(option?.outputAmount, outputTokenUsdPrice)
             : null;
           const routeUsdValue = formatRouteUsdValue(routeUsdAmount);
-          const routeAddedValue = formatRouteAddedValue(
-            routeUsdAmount,
-            inputUsdValue,
-          );
+          const routeAddedValue = isBestPrice
+            ? formatRouteAddedValue(routeUsdAmount, inputUsdValue)
+            : null;
 
           return (
             <motion.div

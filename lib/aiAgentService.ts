@@ -155,12 +155,7 @@ const readAgentErrorMessage = async (response: Response) => {
       const value = errorData[field];
 
       if (typeof value === "string" && value.trim()) {
-        const upstreamStatus =
-          typeof errorData.upstreamStatus === "number"
-            ? ` (upstream ${errorData.upstreamStatus})`
-            : "";
-
-        return `${value.trim()}${upstreamStatus}`;
+        return value.trim();
       }
     }
 

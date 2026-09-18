@@ -8,6 +8,14 @@ import {
   buildAeroSwapTransaction,
   isAeroQuote,
 } from "@/lib/aeroDex";
+import {
+  buildDzapSwapTransaction,
+  isDzapQuote,
+} from "@/lib/dzapDex";
+import {
+  buildXylonetSwapTransaction,
+  isXylonetQuote,
+} from "@/lib/xylonetDex";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 import {
@@ -103,7 +111,13 @@ const refreshSwapQuote = async (
           requestedSlippage ?? quote.slippage,
         ),
         dexId: getQuoteDexId(quote),
-        chainId: isAeroQuote(quote) ? 5042 : undefined,
+        chainId: isAeroQuote(quote)
+          ? 5042
+          : isDzapQuote(quote)
+            ? quote.dzap.fromChain
+            : isXylonetQuote(quote)
+              ? quote.xylonet.fromChain
+              : undefined,
       }),
     }),
   );
@@ -158,22 +172,84 @@ export async function handleSwapBuildTxPost(
       );
     }
 
+    const submittedQuote = quote;
     const refreshed = await refreshSwapQuote(
       request,
-      quote,
+      submittedQuote,
       body?.slippageTolerance ?? body?.slippage,
     );
-    if (!refreshed.ok) {
+    const canReuseSubmittedDzapQuote =
+      isDzapQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
+    const canReuseSubmittedXylonetQuote =
+      isXylonetQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
+    if (
+      !refreshed.ok &&
+      !canReuseSubmittedDzapQuote &&
+      !canReuseSubmittedXylonetQuote
+    ) {
       return refreshed.error;
     }
+    if (!refreshed.ok) {
+      console.warn(
+        "[swap/build-tx] quote refresh failed, using the submitted route quote",
+      );
+    }
 
-    const freshQuote = refreshed.quote;
+    const freshQuote = (
+      refreshed.ok ? refreshed.quote : submittedQuote
+    ) as Record<string, unknown>;
     const userAddress =
       typeof body?.userAddress === "string" ? body.userAddress : undefined;
     const exactApprovalAmount =
       asString(freshQuote.inputAmountNative) ||
       asString(freshQuote.inputAmountRaw) ||
       asString(freshQuote.swapInputAmountNative);
+
+    if (isDzapQuote(freshQuote)) {
+      if (!userAddress) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing userAddress for DZap swap",
+            code: SWAP_API_ERROR_CODES.INVALID_REQUEST,
+          },
+          { status: 400 },
+        );
+      }
+
+      const transactions = await buildDzapSwapTransaction({
+        quote: freshQuote,
+        userAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: boundBuildTxApprovals(transactions, exactApprovalAmount),
+      });
+    }
+
+    if (isXylonetQuote(freshQuote)) {
+      if (!userAddress) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing userAddress for XyloNet swap",
+            code: SWAP_API_ERROR_CODES.INVALID_REQUEST,
+          },
+          { status: 400 },
+        );
+      }
+
+      const transactions = await buildXylonetSwapTransaction({
+        quote: freshQuote,
+        userAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: boundBuildTxApprovals(transactions, exactApprovalAmount),
+      });
+    }
 
     if (isAeroQuote(freshQuote)) {
       if (!userAddress) {

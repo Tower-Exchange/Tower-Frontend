@@ -24,6 +24,7 @@
     "@circle-fin/bridge-kit": "^1.12.0",
     "@dynamic-labs/ethereum": "^4.77.3",
     "@dynamic-labs/sdk-react-core": "^4.77.3",
+    "@dzapio/sdk": "^2.0.44",
     "@radix-ui/react-slot": "^1.2.4",
     "@rainbow-me/rainbowkit": "^2.2.11",
     "@solana/kit": "^5.5.1",
@@ -46,6 +47,9 @@
     "uuid": "^9.0.0",
     "viem": "^2.48.4",
     "wagmi": "^2.19.5"
+  },
+  "overrides": {
+    "viem": "2.48.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

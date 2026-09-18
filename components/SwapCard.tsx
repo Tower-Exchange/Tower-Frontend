@@ -702,59 +702,6 @@ const getRouteOptionCandidates = (
   return filteredCandidates;
 };
 
-const mergeRouteOptionsByDex = (
-  existing: SwapRouteOption[],
-  incoming: SwapRouteOption[],
-) => {
-  const optionsByDexId = new Map<string, SwapRouteOption>();
-
-  const normalizeOption = (option: SwapRouteOption) => {
-    const normalizedDexId = normalizeSwapRouteDexId(option.dexId);
-
-    if (!normalizedDexId || normalizedDexId === "unknown") {
-      return null;
-    }
-
-    const outputAmount = option.outputAmount || option.quote?.outputAmount;
-
-    if (routeOutputAmountToBigInt(outputAmount) <= 0n) {
-      return null;
-    }
-
-    return {
-      ...option,
-      dexId: normalizedDexId,
-      outputAmount,
-    } as SwapRouteOption;
-  };
-
-  for (const option of existing) {
-    const normalizedOption = normalizeOption(option);
-    if (normalizedOption) {
-      optionsByDexId.set(normalizedOption.dexId, normalizedOption);
-    }
-  }
-
-  for (const option of incoming) {
-    const normalizedOption = normalizeOption(option);
-    if (!normalizedOption) {
-      continue;
-    }
-
-    const existingOption = optionsByDexId.get(normalizedOption.dexId);
-    const existingIsFallback = existingOption?.isFallback === true;
-    const incomingIsFallback = normalizedOption.isFallback === true;
-
-    if (existingOption && !existingIsFallback && incomingIsFallback) {
-      continue;
-    }
-
-    optionsByDexId.set(normalizedOption.dexId, normalizedOption);
-  }
-
-  return Array.from(optionsByDexId.values());
-};
-
 const getBestRouteOption = (
   options: SwapRouteOption[],
   routerPriority: string[] = [],
@@ -1454,7 +1401,7 @@ const SwapCard = ({
     }
 
     if (arcNetworkMode === "mainnet") {
-      return ["aero"];
+      return ["aero", "tower-dex", "xylonet-adapter"];
     }
 
     const routerIds = ["xylonet-adapter", "synthra"];
@@ -1629,19 +1576,15 @@ const SwapCard = ({
           selectedDexId,
           currentBestRouteOption,
         );
-        const previousRouteOptionsForSameQuote = shouldPreserveCurrentQuote
-          ? lastSuccessfulRouteOptionsRef.current
-          : [];
-        const nextRouteOptions = mergeRouteOptionsByDex(
-          previousRouteOptionsForSameQuote,
-          actualRouteOptions,
-        );
+        const nextRouteOptions =
+          actualRouteOptions.length > 0
+            ? actualRouteOptions
+            : shouldPreserveCurrentQuote
+              ? lastSuccessfulRouteOptionsRef.current
+              : [];
         const bestRouteOption =
-          getBestRouteOption(
-            nextRouteOptions,
-            availableRouterIds,
-            currentBestRouteOption?.dexId,
-          ) || currentBestRouteOption;
+          getBestRouteOption(nextRouteOptions, availableRouterIds) ||
+          currentBestRouteOption;
         const nextSelectedRouterId = bestRouteOption?.dexId || selectedDexId;
 
         if (nextSelectedRouterId) {

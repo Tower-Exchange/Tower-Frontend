@@ -9,6 +9,7 @@ import {
   classifyTowerAiFetchError,
   fetchTowerAi,
   getTowerAiChatUrl,
+  getTowerAiClientIp,
   logTowerAiProxyError,
   rejectNonFrontendAiRequest,
 } from "@/lib/server/towerAiBackend";
@@ -1456,15 +1457,23 @@ export async function POST(request: NextRequest) {
         : {}),
     };
 
-    const response = await fetchTowerAi(chatUrl, upstreamBody);
+    const response = await fetchTowerAi(
+      chatUrl,
+      upstreamBody,
+      undefined,
+      getTowerAiClientIp(request),
+    );
 
     const data = await readResponsePayload(response);
 
     if (!response.ok) {
-      const message = getErrorMessage(
-        data,
-        `Tower AI backend request failed with status ${response.status}`,
-      );
+      const message =
+        response.status === 429
+          ? "Tower is receiving too many requests. Please wait a moment and try again."
+          : getErrorMessage(
+              data,
+              `Tower AI backend request failed with status ${response.status}`,
+            );
 
       try {
         console.error(

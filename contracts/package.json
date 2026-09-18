@@ -28,7 +28,12 @@
     "deploy:tower-dex-adapter": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-testnet",
     "deploy:tower-dex-adapter:mainnet": "hardhat run scripts/deploy-tower-dex-adapter.cjs --network arc-mainnet",
     "deploy:aero-adapter:mainnet": "hardhat run scripts/deploy-aero-adapter.cjs --network arc-mainnet",
-    "verify:aero-adapter:mainnet": "hardhat run scripts/verify-aero-adapter.cjs --network arc-mainnet"
+    "verify:aero-adapter:mainnet": "hardhat run scripts/verify-aero-adapter.cjs --network arc-mainnet",
+    "deploy:dzap-adapter": "hardhat run scripts/deploy-dzap-adapter.cjs --network arc-testnet",
+    "deploy:dzap-adapter:mainnet": "hardhat run scripts/deploy-dzap-adapter.cjs --network arc-mainnet",
+    "verify:dzap-adapter:mainnet": "hardhat run scripts/verify-dzap-adapter.cjs --network arc-mainnet",
+    "deploy:lifi-adapter:mainnet": "hardhat run scripts/deploy-lifi-adapter.cjs --network arc-mainnet",
+    "verify:lifi-adapter:mainnet": "hardhat run scripts/verify-lifi-adapter.cjs --network arc-mainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",

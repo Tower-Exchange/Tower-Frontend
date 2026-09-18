@@ -151,10 +151,34 @@ export function logTowerAiProxyError(
   });
 }
 
+export function getTowerAiClientIp(request: NextRequest) {
+  const headerValue = (name: string) => request.headers.get(name)?.trim() || "";
+  const cfConnectingIp = headerValue("cf-connecting-ip");
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+
+  const realIp = headerValue("x-real-ip");
+  if (realIp) {
+    return realIp;
+  }
+
+  const forwarded = headerValue("x-forwarded-for");
+  if (forwarded) {
+    const firstHop = forwarded.split(",")[0]?.trim();
+    if (firstHop) {
+      return firstHop;
+    }
+  }
+
+  return null;
+}
+
 export async function fetchTowerAi(
   url: string,
   body: unknown,
   timeoutMs = TOWER_AI_FETCH_TIMEOUT_MS,
+  clientIp?: string | null,
 ) {
   const controller = new AbortController();
   const timeoutError = Object.assign(new Error("AI request timed out"), {
@@ -169,12 +193,17 @@ export async function fetchTowerAi(
     }, timeoutMs);
   });
 
+  const headers: Record<string, string> = {
+    ...getTowerAiAuthHeaders(),
+    Connection: "close",
+  };
+  if (clientIp) {
+    headers["X-Tower-Client-IP"] = clientIp;
+  }
+
   const fetchPromise = fetch(url, {
     method: "POST",
-    headers: {
-      ...getTowerAiAuthHeaders(),
-      Connection: "close",
-    },
+    headers,
     body: JSON.stringify(body),
     cache: "no-store",
     signal: controller.signal,

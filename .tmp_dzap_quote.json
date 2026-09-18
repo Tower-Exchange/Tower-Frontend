@@ -1,0 +1,15 @@
+{
+  "fromChain": 5042,
+  "filter": "best",
+  "data": [
+    {
+      "amount": "100000",
+      "srcToken": "0x3600000000000000000000000000000000000000",
+      "srcDecimals": 6,
+      "destToken": "0x171A4217b86A807A64eB94757Db6849fb4bDbAA0",
+      "destDecimals": 8,
+      "toChain": 5042,
+      "slippage": 0.5
+    }
+  ]
+}
