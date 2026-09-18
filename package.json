@@ -45,11 +45,11 @@
     "tailwind-merge": "^3.4.0",
     "use-debounce": "^10.1.0",
     "uuid": "^9.0.0",
-    "viem": "^2.48.4",
+    "viem": "2.48.4",
     "wagmi": "^2.19.5"
   },
   "overrides": {
-    "viem": "2.48.4"
+    "viem": "$viem"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
