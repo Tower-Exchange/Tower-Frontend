@@ -36,10 +36,10 @@ const AIAgentPage = () => {
   */
 
   return (
-    <div className="relative flex min-h-[calc(100dvh-100px)] flex-col overflow-x-hidden bg-background text-foreground flex-1">
+    <div className="relative flex h-[calc(100dvh-5rem)] flex-col overflow-hidden bg-background text-foreground flex-1">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_85%,rgba(87,147,255,0.08),transparent_30%),radial-gradient(circle_at_75%_100%,rgba(77,149,235,0.06),transparent_34%)] dark:bg-[radial-gradient(circle_at_20%_85%,rgba(87,147,255,0.12),transparent_30%),radial-gradient(circle_at_75%_100%,rgba(35,57,94,0.16),transparent_34%),linear-gradient(180deg,#07080b_0%,#0a0b0f_45%,#0d1015_100%)]" />
 
-      <div className="relative z-10 flex min-h-0 flex-1 flex-col">
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         <TokenTicker />
 
         {/* Hidden while Portfolio Analysis card is commented out
@@ -57,11 +57,11 @@ const AIAgentPage = () => {
         )}
         */}
 
-        <div className="mx-auto flex w-full max-w-[1320px] h-[calc(100dvh-12rem)] min-h-[650px] flex-col px-3 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-4 lg:px-8 lg:pb-6">
+        <div className="mx-auto flex w-full max-w-[1320px] flex-1 min-h-0 flex-col px-3 pb-3 pt-2 sm:px-6 sm:pb-4 sm:pt-3 lg:px-8 lg:pb-5">
           {/* Originally used 3-column grid when Portfolio Analysis panel was active:
               className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_16px_minmax(430px,500px)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_18px_minmax(460px,540px)]"
           */}
-          <div className="flex h-full min-h-0 flex-1 flex-col gap-4 w-full">
+          <div className="flex h-full min-h-0 flex-1 flex-col gap-4 w-full overflow-hidden">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
