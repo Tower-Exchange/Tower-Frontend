@@ -296,13 +296,15 @@ const readErrorMessage = (error: unknown) => {
 const asString = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 
+const isDzapRateLimitMessage = (message: string) =>
+  /rate\s*limit/i.test(message);
+
 type DzapQuoteCacheEntry = {
   quote: DzapQuote;
   fetchedAt: number;
 };
 
 const dzapQuoteCache = new Map<string, DzapQuoteCacheEntry>();
-const dzapQuoteInflight = new Map<string, Promise<DzapQuote | null>>();
 
 const getDzapQuoteCacheKey = (params: {
   chainId: number;
@@ -634,6 +636,32 @@ export async function getDzapQuote(params: {
 
   const srcToken = getAddress(params.inputToken);
   const destToken = getAddress(params.outputToken);
+  const srcDecimals = getTokenDecimalsByAddress(srcToken);
+  const destDecimals = getTokenDecimalsByAddress(destToken);
+  const slippagePercent = slippageBpsToPercent(params.slippageBps);
+  const adapterAddress = getDzapAdapterAddress(params.chainId);
+  const executorAddress = getDzapExecutorAddress(params.chainId);
+  const canCollectExecutorFee =
+    Boolean(adapterAddress && executorAddress) &&
+    !isNativeSentinelToken(srcToken) &&
+    !isNativeSentinelToken(destToken);
+  const feeState = canCollectExecutorFee
+    ? await getDzapExecutorFeeState(params.chainId, executorAddress as Address)
+    : {
+        enabled: false,
+        feeBps: DZAP_SWAP_FEE_BPS,
+        treasury: DZAP_SWAP_FEE_RECIPIENT,
+      };
+  const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
+  const platformFeeAmountNative = shouldCollectExecutorFee
+    ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR
+    : 0n;
+  const swapInputAmountNative = amountIn - platformFeeAmountNative;
+
+  if (swapInputAmountNative <= 0n) {
+    return null;
+  }
+
   const cacheKey = getDzapQuoteCacheKey({
     chainId: params.chainId,
     srcToken,
@@ -649,198 +677,144 @@ export async function getDzapQuote(params: {
     return freshCachedQuote;
   }
 
-  const staleCachedQuote = readCachedDzapQuote(
-    cacheKey,
-    DZAP_QUOTE_CACHE_HARD_TTL_MS,
-  );
+  try {
+    const client = getDzapClient();
+    const quotes = await withTimeout(
+      client.getTradeQuotes({
+        fromChain: params.chainId,
+        account: params.account || adapterAddress || undefined,
+        filter: QuoteFilters.best,
+        disableEstimation: true,
+        timingStrategy: {
+          minWaitTimeMs: 400,
+          maxWaitTimeMs: 3_500,
+          preferredResultCount: 1,
+          relaxMinSuccessOnDelay: true,
+        },
+        data: [
+          {
+            amount: swapInputAmountNative.toString(),
+            srcToken,
+            srcDecimals,
+            destToken,
+            destDecimals,
+            toChain: params.chainId,
+            slippage: slippagePercent,
+          },
+        ],
+      }),
+      DZAP_QUOTE_TIMEOUT_MS,
+      `DZap quote timed out after ${DZAP_QUOTE_TIMEOUT_MS}ms`,
+    );
 
-  const loadFreshDzapQuote = async (): Promise<DzapQuote | null> => {
-    const srcDecimals = getTokenDecimalsByAddress(srcToken);
-    const destDecimals = getTokenDecimalsByAddress(destToken);
-    const slippagePercent = slippageBpsToPercent(params.slippageBps);
-    const adapterAddress = getDzapAdapterAddress(params.chainId);
-    const executorAddress = getDzapExecutorAddress(params.chainId);
-    const canCollectExecutorFee =
-      Boolean(adapterAddress && executorAddress) &&
-      !isNativeSentinelToken(srcToken) &&
-      !isNativeSentinelToken(destToken);
-    const feeState = canCollectExecutorFee
-      ? await getDzapExecutorFeeState(params.chainId, executorAddress as Address)
-      : {
-          enabled: false,
-          feeBps: DZAP_SWAP_FEE_BPS,
-          treasury: DZAP_SWAP_FEE_RECIPIENT,
-        };
-    const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
-    const platformFeeAmountNative = shouldCollectExecutorFee
-      ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR
-      : 0n;
-    const swapInputAmountNative = amountIn - platformFeeAmountNative;
-
-    if (swapInputAmountNative <= 0n) {
+    const selected = pickTradeQuote(quotes);
+    if (!selected) {
       return null;
     }
 
-    try {
-      const client = getDzapClient();
-      const quotes = await withTimeout(
-        client.getTradeQuotes({
-          fromChain: params.chainId,
-          account: params.account || adapterAddress || undefined,
-          filter: QuoteFilters.best,
-          disableEstimation: true,
-          timingStrategy: {
-            minWaitTimeMs: 400,
-            maxWaitTimeMs: 3_500,
-            preferredResultCount: 1,
-            relaxMinSuccessOnDelay: true,
-          },
-          data: [
+    const quote = selected.quote;
+    const amountOut = BigInt(quote.destAmount);
+    const minOut = BigInt(quote.minDestAmount || "0");
+    const priceImpact = parsePriceImpactBps(quote.priceImpactPercent);
+    const routerAddress = await getRouterAddress(client, params.chainId);
+    const pathSteps = quote.path ?? [];
+    const hops =
+      pathSteps.length > 0
+        ? pathSteps.map((step: any) => ({
+            dexId: TOWER_DEX_ID,
+            dex: TOWER_DEX_ID,
+            dexName: TOWER_DEX_NAME,
+            dexRouter: routerAddress,
+            path: [step.srcToken.address, step.destToken.address],
+            amountIn: step.srcAmount,
+            amountOut: step.destAmount,
+            priceImpact,
+          }))
+        : [
             {
-              amount: swapInputAmountNative.toString(),
-              srcToken,
-              srcDecimals,
-              destToken,
-              destDecimals,
-              toChain: params.chainId,
-              slippage: slippagePercent,
-            },
-          ],
-        }),
-        DZAP_QUOTE_TIMEOUT_MS,
-        `DZap quote timed out after ${DZAP_QUOTE_TIMEOUT_MS}ms`,
-      );
-
-      const selected = pickTradeQuote(quotes);
-      if (!selected) {
-        return staleCachedQuote;
-      }
-
-      const quote = selected.quote;
-      const amountOut = BigInt(quote.destAmount);
-      const minOut = BigInt(quote.minDestAmount || "0");
-      const priceImpact = parsePriceImpactBps(quote.priceImpactPercent);
-      const routerAddress = await getRouterAddress(client, params.chainId);
-      const pathSteps = quote.path ?? [];
-      const hops =
-        pathSteps.length > 0
-          ? pathSteps.map((step) => ({
               dexId: TOWER_DEX_ID,
               dex: TOWER_DEX_ID,
               dexName: TOWER_DEX_NAME,
               dexRouter: routerAddress,
-              path: [step.srcToken.address, step.destToken.address],
-              amountIn: step.srcAmount,
-              amountOut: step.destAmount,
+              path: [srcToken, destToken],
+              amountIn: swapInputAmountNative.toString(),
+              amountOut: quote.destAmount,
               priceImpact,
-            }))
-          : [
-              {
-                dexId: TOWER_DEX_ID,
-                dex: TOWER_DEX_ID,
-                dexName: TOWER_DEX_NAME,
-                dexRouter: routerAddress,
-                path: [srcToken, destToken],
-                amountIn: swapInputAmountNative.toString(),
-                amountOut: amountOut.toString(),
-                priceImpact,
-              },
-            ];
+            },
+          ];
 
-      const mappedQuote: DzapQuote = {
-        inputToken: srcToken,
-        outputToken: destToken,
-        inputAmount: scaleAmount(amountIn, srcDecimals, NORMALIZED_DECIMALS).toString(),
-        swapInputAmount: scaleAmount(
-          swapInputAmountNative,
-          srcDecimals,
-          NORMALIZED_DECIMALS,
-        ).toString(),
-        outputAmount: scaleAmount(amountOut, destDecimals, NORMALIZED_DECIMALS).toString(),
-        minOut: scaleAmount(minOut, destDecimals, NORMALIZED_DECIMALS).toString(),
-        inputAmountNative: amountIn.toString(),
-        swapInputAmountNative: swapInputAmountNative.toString(),
-        outputAmountNative: amountOut.toString(),
-        minOutNative: minOut.toString(),
-        priceImpact,
-        gasEstimate: shouldCollectExecutorFee
-          ? EXECUTOR_GAS_LIMIT.toString()
-          : DEFAULT_GAS_LIMIT.toString(),
-        slippage: params.slippageBps,
-        feeMode: shouldCollectExecutorFee ? TOWER_SWAP_FEE_MODE : "none",
-        feeBps: shouldCollectExecutorFee ? feeState.feeBps : undefined,
-        feeRecipient: shouldCollectExecutorFee
-          ? feeState.treasury || undefined
+    const mappedQuote: DzapQuote = {
+      inputToken: srcToken,
+      outputToken: destToken,
+      inputAmount: scaleAmount(amountIn, srcDecimals, NORMALIZED_DECIMALS).toString(),
+      swapInputAmount: scaleAmount(
+        swapInputAmountNative,
+        srcDecimals,
+        NORMALIZED_DECIMALS,
+      ).toString(),
+      outputAmount: scaleAmount(amountOut, destDecimals, NORMALIZED_DECIMALS).toString(),
+      minOut: scaleAmount(minOut, destDecimals, NORMALIZED_DECIMALS).toString(),
+      inputAmountNative: amountIn.toString(),
+      swapInputAmountNative: swapInputAmountNative.toString(),
+      outputAmountNative: amountOut.toString(),
+      minOutNative: minOut.toString(),
+      priceImpact,
+      gasEstimate: shouldCollectExecutorFee
+        ? EXECUTOR_GAS_LIMIT.toString()
+        : DEFAULT_GAS_LIMIT.toString(),
+      slippage: params.slippageBps,
+      feeMode: shouldCollectExecutorFee ? TOWER_SWAP_FEE_MODE : "none",
+      feeBps: shouldCollectExecutorFee ? feeState.feeBps : undefined,
+      feeRecipient: shouldCollectExecutorFee
+        ? feeState.treasury || undefined
+        : undefined,
+      platformFeeAmount:
+        platformFeeAmountNative > 0n
+          ? scaleAmount(platformFeeAmountNative, srcDecimals, NORMALIZED_DECIMALS).toString()
           : undefined,
-        platformFeeAmount:
-          platformFeeAmountNative > 0n
-            ? scaleAmount(platformFeeAmountNative, srcDecimals, NORMALIZED_DECIMALS).toString()
-            : undefined,
-        platformFeeAmountNative:
-          platformFeeAmountNative > 0n ? platformFeeAmountNative.toString() : undefined,
-        dzap: {
-          source: DZAP_QUOTE_SOURCE,
-          fromChain: params.chainId,
-          toChain: params.chainId,
-          protocol: selected.protocol,
-          bestReturnSource: selected.bestReturnSource,
-          additionalInfo: quote.additionalInfo as Record<string, unknown> | undefined,
-          srcDecimals,
-          destDecimals,
-          slippagePercent,
-          amount: swapInputAmountNative.toString(),
-          srcToken,
-          destToken,
-          providerName: quote.providerDetails?.name,
-        },
-        route: {
-          type: hops.length > 1 ? "multi" : "single",
-          rawPath: quote.providerDetails?.name || selected.protocol,
-          hops,
-        },
-      };
+      platformFeeAmountNative:
+        platformFeeAmountNative > 0n ? platformFeeAmountNative.toString() : undefined,
+      dzap: {
+        source: DZAP_QUOTE_SOURCE,
+        fromChain: params.chainId,
+        toChain: params.chainId,
+        protocol: selected.protocol,
+        bestReturnSource: selected.bestReturnSource,
+        additionalInfo: quote.additionalInfo as Record<string, unknown> | undefined,
+        srcDecimals,
+        destDecimals,
+        slippagePercent,
+        amount: swapInputAmountNative.toString(),
+        srcToken,
+        destToken,
+        providerName: quote.providerDetails?.name,
+      },
+      route: {
+        type: hops.length > 1 ? "multi" : "single",
+        rawPath: quote.providerDetails?.name || selected.protocol,
+        hops,
+      },
+    };
 
-      dzapQuoteCache.set(cacheKey, {
-        quote: mappedQuote,
-        fetchedAt: Date.now(),
-      });
-      return mappedQuote;
-    } catch (error) {
-      const message = readErrorMessage(error);
-      if (staleCachedQuote) {
-        console.warn("[DZap] quote unavailable, reusing cached Tower quote:", message);
-        return staleCachedQuote;
-      }
-
-      console.warn("[DZap] quote unavailable:", message);
-      return null;
+    dzapQuoteCache.set(cacheKey, {
+      quote: mappedQuote,
+      fetchedAt: Date.now(),
+    });
+    return mappedQuote;
+  } catch (error) {
+    const message = readErrorMessage(error);
+    const staleCachedQuote = readCachedDzapQuote(
+      cacheKey,
+      DZAP_QUOTE_CACHE_HARD_TTL_MS,
+    );
+    if (staleCachedQuote && isDzapRateLimitMessage(message)) {
+      console.warn("[DZap] rate limited, reusing cached Tower quote");
+      return staleCachedQuote;
     }
-  };
 
-  const inflightQuote = dzapQuoteInflight.get(cacheKey);
-  if (staleCachedQuote) {
-    if (!inflightQuote) {
-      const refresh = loadFreshDzapQuote().finally(() => {
-        if (dzapQuoteInflight.get(cacheKey) === refresh) {
-          dzapQuoteInflight.delete(cacheKey);
-        }
-      });
-      dzapQuoteInflight.set(cacheKey, refresh);
-    }
-    return staleCachedQuote;
+    console.warn("[DZap] quote unavailable:", message);
+    return null;
   }
-
-  if (inflightQuote) {
-    return inflightQuote;
-  }
-
-  const refresh = loadFreshDzapQuote().finally(() => {
-    if (dzapQuoteInflight.get(cacheKey) === refresh) {
-      dzapQuoteInflight.delete(cacheKey);
-    }
-  });
-  dzapQuoteInflight.set(cacheKey, refresh);
-  return refresh;
 }
 
 export async function buildDzapSwapTransaction(params: {
@@ -998,11 +972,13 @@ export async function buildDzapSwapTransaction(params: {
       }
     : null;
 
-  const updatedDestAmount = Object.values(built.updatedQuotes || {})[0];
-  const expectedUserOutput =
+  const updatedDestAmount = Object.values((built as any)?.updatedQuotes || {})[0];
+  const rawExpectedOutput =
     updatedDestAmount ||
     params.quote.outputAmountNative ||
-    params.quote.minOutNative;
+    params.quote.minOutNative ||
+    "";
+  const expectedUserOutput = typeof rawExpectedOutput === "string" ? rawExpectedOutput : String(rawExpectedOutput);
   const feeRecipient = params.quote.feeRecipient
     ? getAddress(params.quote.feeRecipient)
     : DZAP_SWAP_FEE_RECIPIENT;

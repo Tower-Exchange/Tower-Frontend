@@ -1603,7 +1603,6 @@ const SwapCard = ({
         }
 
         const shouldPreserveCurrentQuote =
-          lastSuccessfulQuoteRef.current?.sellAmountValue === sellAmountValue &&
           lastSuccessfulQuoteRef.current?.sellTokenSymbol === sellToken.symbol &&
           lastSuccessfulQuoteRef.current?.receiveTokenSymbol === receiveToken.symbol;
 

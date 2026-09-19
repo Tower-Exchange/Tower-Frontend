@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { FaXTwitter } from "react-icons/fa6";
 import { FaTelegram, FaDiscord } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,6 +12,7 @@ const TERMS_URL = "/terms";
 const PRIVACY_URL = "/privacy";
 
 const Footer = () => {
+  const pathname = usePathname();
   const [infoModalOpen, setInfoModalOpen] = useState(false);
 
   useEffect(() => {
@@ -25,6 +27,10 @@ const Footer = () => {
       window.removeEventListener("scroll", handleScroll, { capture: true });
     };
   }, [infoModalOpen]);
+
+  if (pathname === "/ai-agent") {
+    return null;
+  }
 
   const socialLinks = [
     {

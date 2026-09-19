@@ -1415,8 +1415,8 @@ export const AIChat = () => {
   ]);
 
   return (
-    <div className="relative flex h-full min-h-0 flex-1 overflow-hidden sm:rounded-[28px] sm:border sm:border-border sm:bg-card sm:shadow-[0_22px_70px_rgba(0,0,0,0.08)] dark:sm:shadow-[0_22px_70px_rgba(0,0,0,0.36)] lg:rounded-none lg:border-0 lg:bg-transparent lg:shadow-none">
-      <div className="pointer-events-none absolute inset-0 hidden bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.08),transparent_30%)] dark:bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.16),transparent_30%),radial-gradient(circle_at_58%_100%,rgba(51,88,148,0.22),transparent_38%),linear-gradient(180deg,#090a0d_0%,#0b0d11_46%,#10161e_100%)] sm:block lg:hidden" />
+    <div className="relative flex h-full min-h-0 flex-1 overflow-hidden rounded-[24px] sm:rounded-[28px] border border-border bg-card/95 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.08)] dark:shadow-[0_22px_70px_rgba(0,0,0,0.36)]">
+      <div className="pointer-events-none absolute inset-0 hidden bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.08),transparent_30%)] dark:bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.16),transparent_30%),radial-gradient(circle_at_58%_100%,rgba(51,88,148,0.22),transparent_38%),linear-gradient(180deg,#090a0d_0%,#0b0d11_46%,#10161e_100%)] sm:block" />
 
       <motion.div
         initial={false}
@@ -1752,8 +1752,8 @@ export const AIChat = () => {
                 )}
               </div>
             ) : (
-              <div className="mx-auto flex min-h-full w-full max-w-[52rem] items-start px-4 pb-8 pt-6 sm:min-h-[calc(100%+10rem)] sm:items-end sm:px-6 sm:pb-28 sm:pt-10 lg:px-7">
-                <div className="w-full max-w-[24rem]">
+              <div className="mx-auto flex h-full w-full max-w-[52rem] flex-col justify-center px-4 pb-20 pt-4 sm:px-6 sm:pb-24 sm:pt-6 lg:px-7">
+                <div className="w-full max-w-[32rem]">
                   <motion.div
                     initial={{ scale: 0.9, opacity: 0 }}
                     animate={{ scale: 1, opacity: 1 }}
@@ -1810,9 +1810,9 @@ export const AIChat = () => {
 
         <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-background via-background/95 to-transparent sm:block" />
 
-        <div className="relative z-20 mt-auto px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3 sm:absolute sm:inset-x-0 sm:bottom-0 sm:mt-0 sm:px-6 sm:pb-6 sm:pt-8 lg:px-7">
+        <div className="absolute inset-x-0 bottom-0 z-20 px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3 sm:px-6 sm:pb-6 sm:pt-8 lg:px-7">
           <div className="mx-auto w-full max-w-[52rem]">
-            <div className="w-full max-w-none sm:max-w-[30rem]">
+            <div className="mx-auto w-full max-w-none sm:max-w-[44rem]">
               <div
                 className="tower-chat-input-shell relative rounded-[20px] border border-border bg-secondary px-3.5 py-2 shadow-[0_16px_44px_rgba(0,0,0,0.08)] focus-within:border-primary/40 focus-within:outline-none focus-within:ring-0 sm:rounded-[22px] sm:px-4 sm:py-2.5 dark:shadow-[0_16px_44px_rgba(0,0,0,0.36)]"
                 style={{
