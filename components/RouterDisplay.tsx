@@ -311,7 +311,7 @@ export default function RouterDisplay({
   ];
   const routersToDisplay = routerCandidates.map((router, index) => ({ router, index }));
 
-  const allQuotedRoutes = routersToDisplay
+  const unsortedQuotedRoutes = routersToDisplay
     .map(({ router, index }) => {
       const option = routeOptionByDexId.get(router.id) ?? null;
       const outputAmount = outputAmountToBigInt(
@@ -338,14 +338,29 @@ export default function RouterDisplay({
       }
 
       return route.option !== null && route.hasQuote;
-    })
-    .sort((leftRoute, rightRoute) => {
-      if (leftRoute.hasQuote !== rightRoute.hasQuote) {
-        return leftRoute.hasQuote ? -1 : 1;
-      }
+    });
+  const expectedRouterCount =
+    availableRouterIdSet.size > 0
+      ? availableRouterIdSet.size
+      : unsortedQuotedRoutes.length;
+  const quotedRouterCount = unsortedQuotedRoutes.filter(
+    (route) => route.hasQuote,
+  ).length;
+  const hidePartialQuotes =
+    isQuoteSearchPending &&
+    expectedRouterCount > 0 &&
+    quotedRouterCount < expectedRouterCount;
 
-      if (leftRoute.outputAmount !== rightRoute.outputAmount) {
-        return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
+  const allQuotedRoutes = [...unsortedQuotedRoutes].sort(
+    (leftRoute, rightRoute) => {
+      if (!hidePartialQuotes) {
+        if (leftRoute.hasQuote !== rightRoute.hasQuote) {
+          return leftRoute.hasQuote ? -1 : 1;
+        }
+
+        if (leftRoute.outputAmount !== rightRoute.outputAmount) {
+          return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
+        }
       }
 
       const leftFallback = leftRoute.option?.isFallback === true;
@@ -371,7 +386,9 @@ export default function RouterDisplay({
 
   const displayedRoutes =
     availableRouterIdSet.size > 0 ? allQuotedRoutes : allQuotedRoutes.slice(0, 3);
-  const bestQuotedRoute = displayedRoutes.find((route) => route.hasQuote) ?? null;
+  const bestQuotedRoute = hidePartialQuotes
+    ? null
+    : displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
   const dexCount = allQuotedRoutes.length;
   const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
@@ -461,10 +478,12 @@ export default function RouterDisplay({
         {displayedRoutes.map(({ router, option, hasQuote }) => {
           const isBestPrice = Boolean(bestPriceRouterId) && router.id === bestPriceRouterId;
           const isSelected = isBestPrice;
-          const isPendingQuote = !hasQuote && isQuoteSearchPending;
-          const routeUsdAmount = hasQuote
-            ? getRouteUsdValue(option, outputTokenUsdPrice, outputTokenSymbol)
-            : null;
+          const isPendingQuote =
+            hidePartialQuotes || (!hasQuote && isQuoteSearchPending);
+          const routeUsdAmount =
+            hasQuote && !hidePartialQuotes
+              ? getRouteUsdValue(option, outputTokenUsdPrice, outputTokenSymbol)
+              : null;
           const routeUsdValue = formatRouteUsdValue(routeUsdAmount);
           const routeAddedValue = isBestPrice
             ? formatRouteAddedValue(routeUsdAmount, inputUsdValue)

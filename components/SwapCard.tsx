@@ -663,8 +663,8 @@ const getRouteOptionCandidates = (
       const fallbackDexId = normalizedDexId === "unknown" ? selectedDexId : normalizedDexId;
       const outputAmount =
         option.quote?.outputAmount ||
-        quoteData.outputAmount ||
-        option.outputAmount;
+        option.outputAmount ||
+        (fallbackDexId === selectedDexId ? quoteData.outputAmount : undefined);
       const dexName =
         option.dexName ||
         option.quote?.route?.hops?.[0]?.dexName ||
@@ -678,7 +678,9 @@ const getRouteOptionCandidates = (
         dexId: fallbackDexId,
         dexName,
         outputAmount,
-        quote: option.quote || quoteData,
+        quote:
+          option.quote ||
+          (fallbackDexId === selectedDexId ? quoteData : option.quote),
       } as SwapRouteOption;
     })
     .filter((option) => {
@@ -690,7 +692,9 @@ const getRouteOptionCandidates = (
       const outputAmount =
         option.quote?.outputAmount ||
         option.outputAmount ||
-        quoteData.outputAmount;
+        (normalizeSwapRouteDexId(option.dexId) === selectedDexId
+          ? quoteData.outputAmount
+          : undefined);
       return routeOutputAmountToBigInt(outputAmount) > 0n;
     });
 
@@ -1588,9 +1592,7 @@ const SwapCard = ({
         const requestedDexIds =
           routerId && availableRouterIds.includes(normalizeSwapRouteDexId(routerId))
             ? [normalizeSwapRouteDexId(routerId)]
-            : availableRouterIds.length > 0
-              ? availableRouterIds
-              : [undefined];
+            : [undefined];
 
         console.log("Getting quotes from Tower Exchange:", {
           sellToken: sellToken.symbol,
@@ -1598,7 +1600,9 @@ const SwapCard = ({
           tokenInAddress,
           tokenOutAddress,
           amountInWei,
-          dexIds: requestedDexIds,
+          dexIds: requestedDexIds.filter(
+            (dexId): dexId is string => Boolean(dexId),
+          ),
         });
 
         const commitMergedRouteOptions = (nextRouteOptions: SwapRouteOption[]) => {
@@ -1679,12 +1683,6 @@ const SwapCard = ({
             }
 
             incomingByDex.push(incomingRouteOptions);
-            commitMergedRouteOptions(
-              mergeRouteOptionsByDexId(
-                routeOptionsMergeRef.current,
-                incomingRouteOptions,
-              ),
-            );
           }),
         );
 
