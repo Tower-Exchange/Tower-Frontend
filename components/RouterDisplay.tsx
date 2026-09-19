@@ -493,17 +493,42 @@ export default function RouterDisplay({
             <motion.div
               key={router.id}
               role="listitem"
-              className={`flex min-h-[52px] w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left transition-colors sm:gap-3 sm:px-3 ${
+              className={`relative flex min-h-[52px] w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left transition-colors sm:gap-3 sm:px-3 ${
                 isSelected
-                  ? `
-    border border-primary/40
-    bg-accent
-    shadow-[inset_0_1px_0_rgba(255,255,255,.06),inset_0_-1px_0_rgba(0,0,0,.45),0_2px_6px_rgba(0,0,0,.35)]
-  `
+                  ? "shadow-[0_2px_6px_rgba(0,0,0,.35)]"
                   : "border border-transparent"
               }`}
             >
-              <span className="flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
+              {/* Deep-glass backdrop — extends 2× the row height so backdrop-filter blur()
+                  picks up elements below the row (Josh W. Comeau technique).
+                  A mask trims the visual back to just the row area. */}
+              {isSelected && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 top-0 z-0 h-[200%] rounded-sm bg-accent/50"
+                  style={{
+                    backdropFilter: "blur(14px)",
+                    WebkitBackdropFilter: "blur(14px)",
+                    maskImage:
+                      "linear-gradient(to bottom, black 0% 50%, transparent 50% 100%)",
+                    WebkitMaskImage:
+                      "linear-gradient(to bottom, black 0% 50%, transparent 50% 100%)",
+                  }}
+                />
+              )}
+              {/* Border overlay — rendered at z-20 (above backdrop z-0 and content z-10)
+                  so the complete border is always visible on all 4 sides. */}
+              {isSelected && (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute inset-0 z-20 rounded-sm"
+                  style={{
+                    boxShadow:
+                      "inset 0 0 0 1px rgba(123,184,255,0.45), inset 0 1px 0 rgba(255,255,255,.09), inset 0 -1px 0 rgba(0,0,0,.35)",
+                  }}
+                />
+              )}
+              <span className="relative z-10 flex min-w-0 flex-1 items-center gap-2 sm:gap-2.5">
                 <Image
                   src={router.logo}
                   alt={`${router.name} logo`}
@@ -520,7 +545,7 @@ export default function RouterDisplay({
                   </span>
                 )}
               </span>
-              <span className="flex min-w-[7.4rem] shrink-0 flex-col items-end text-right leading-tight sm:min-w-[168px]">
+              <span className="relative z-10 flex min-w-[7.4rem] shrink-0 flex-col items-end text-right leading-tight sm:min-w-[168px]">
                 <span className="flex w-full min-w-0 items-center justify-end gap-1.5 sm:gap-2">
                   {isBestPrice && routeAddedValue ? (
                     <span className="whitespace-nowrap text-[10px] font-normal tabular-nums leading-none text-[#07D54F]">
