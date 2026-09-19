@@ -172,6 +172,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           headers: {
             'Content-Type': 'application/json',
           },
+          cache: 'no-store',
           body: JSON.stringify({
             inputToken,
             outputToken,
@@ -182,29 +183,87 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           }),
         });
 
-        if (!response.ok) {
-          let errorMessage = `Failed to get quote: ${response.statusText}`;
+        const responseData = await response.json().catch(() => null);
+        const quote: SwapQuote | null =
+          responseData?.data && typeof responseData.data === 'object'
+            ? responseData.data
+            : responseData;
 
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } catch {
-            const errorText = await response.text().catch(() => '');
-            if (errorText) {
-              errorMessage = errorText;
-            }
+        const recoverQuoteFromRouteOptions = (): SwapQuote | null => {
+          const routeOptions = Array.isArray(quote?.routeOptions)
+            ? quote.routeOptions
+            : [];
+          if (routeOptions.length === 0) {
+            return null;
           }
 
-          throw new Error(errorMessage);
+          const requestedDexId = String(dexId || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[\s_]+/g, "-");
+          const matchingOption =
+            (requestedDexId
+              ? routeOptions.find((option) => {
+                  const optionDexId = String(option.dexId || "")
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[\s_]+/g, "-");
+                  return (
+                    optionDexId === requestedDexId ||
+                    (requestedDexId === "tower-dex" &&
+                      (optionDexId === "tower" || optionDexId === "tower-amm")) ||
+                    (requestedDexId === "xylonet-adapter" &&
+                      (optionDexId === "xylonet" || optionDexId === "xylo"))
+                  );
+                })
+              : null) || routeOptions[0];
+
+          const recoveredQuote = matchingOption?.quote || quote;
+          const outputAmount =
+            recoveredQuote?.outputAmount || matchingOption?.outputAmount;
+          if (!recoveredQuote || !outputAmount) {
+            return null;
+          }
+
+          return {
+            ...recoveredQuote,
+            outputAmount,
+            routeOptions,
+          };
+        };
+
+        if (response.status === 404 || responseData?.success === false) {
+          const recoveredQuote = recoverQuoteFromRouteOptions();
+          if (recoveredQuote) {
+            return recoveredQuote;
+          }
+
+          console.debug('[useTowerSwap] quote unavailable', {
+            inputToken,
+            outputToken,
+            inputAmount,
+            dexId,
+            status: response.status,
+            error: responseData?.error,
+          });
+          return null;
         }
 
-        const responseData = await response.json();
-        // Backend wraps response in {success, data, timestamp}
-        const quote: SwapQuote = responseData.data || responseData;
+        if (!response.ok) {
+          throw new Error(
+            responseData?.error || `Failed to get quote: ${response.statusText}`,
+          );
+        }
+
+        if (!quote?.outputAmount) {
+          return recoverQuoteFromRouteOptions();
+        }
+
         console.debug('[useTowerSwap] quote response received', {
           inputToken,
           outputToken,
           inputAmount,
+          dexId,
           outputAmount: quote.outputAmount,
           routeOptionsCount: quote.routeOptions?.length ?? 0,
         });

@@ -640,6 +640,14 @@ const routeOutputAmountToBigInt = (amount?: string) => {
   }
 };
 
+const getResolvedRouteOutputAmount = (
+  option?: Pick<SwapRouteOption, "outputAmount" | "quote"> | null,
+) =>
+  option?.quote?.outputAmount ||
+  option?.outputAmount ||
+  option?.quote?.outputAmountNative ||
+  "0";
+
 const getRouteOptionCandidates = (
   quoteData: SwapQuote,
   selectedDexId: string,
@@ -654,7 +662,9 @@ const getRouteOptionCandidates = (
       const normalizedDexId = normalizeSwapRouteDexId(option.dexId);
       const fallbackDexId = normalizedDexId === "unknown" ? selectedDexId : normalizedDexId;
       const outputAmount =
-        option.outputAmount || option.quote?.outputAmount || quoteData.outputAmount;
+        option.quote?.outputAmount ||
+        option.outputAmount ||
+        (fallbackDexId === selectedDexId ? quoteData.outputAmount : undefined);
       const dexName =
         option.dexName ||
         option.quote?.route?.hops?.[0]?.dexName ||
@@ -668,7 +678,9 @@ const getRouteOptionCandidates = (
         dexId: fallbackDexId,
         dexName,
         outputAmount,
-        quote: option.quote || quoteData,
+        quote:
+          option.quote ||
+          (fallbackDexId === selectedDexId ? quoteData : option.quote),
       } as SwapRouteOption;
     })
     .filter((option) => {
@@ -677,7 +689,12 @@ const getRouteOptionCandidates = (
         return false;
       }
 
-      const outputAmount = option.outputAmount || option.quote?.outputAmount || quoteData.outputAmount;
+      const outputAmount =
+        option.quote?.outputAmount ||
+        option.outputAmount ||
+        (normalizeSwapRouteDexId(option.dexId) === selectedDexId
+          ? quoteData.outputAmount
+          : undefined);
       return routeOutputAmountToBigInt(outputAmount) > 0n;
     });
 
@@ -702,6 +719,37 @@ const getRouteOptionCandidates = (
   return filteredCandidates;
 };
 
+const mergeRouteOptionsByDexId = (
+  current: SwapRouteOption[],
+  incoming: SwapRouteOption[],
+) => {
+  const optionsByDexId = new Map<string, SwapRouteOption>();
+
+  for (const option of [...current, ...incoming]) {
+    const dexId = normalizeSwapRouteDexId(option.dexId);
+    if (!dexId || dexId === "unknown") {
+      continue;
+    }
+
+    const existingOption = optionsByDexId.get(dexId);
+    const optionAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(option),
+    );
+    const existingAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(existingOption),
+    );
+    if (!existingOption || optionAmount > existingAmount) {
+      optionsByDexId.set(dexId, {
+        ...option,
+        dexId,
+        outputAmount: getResolvedRouteOutputAmount(option),
+      });
+    }
+  }
+
+  return Array.from(optionsByDexId.values());
+};
+
 const getBestRouteOption = (
   options: SwapRouteOption[],
   routerPriority: string[] = [],
@@ -720,8 +768,12 @@ const getBestRouteOption = (
   );
 
   return options.reduce((bestOption, option) => {
-    const candidateAmount = routeOutputAmountToBigInt(option.outputAmount);
-    const bestAmount = routeOutputAmountToBigInt(bestOption.outputAmount);
+    const candidateAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(option),
+    );
+    const bestAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(bestOption),
+    );
     const candidateIsFallback = option.isFallback === true;
     const bestIsFallback = bestOption.isFallback === true;
 
@@ -992,6 +1044,7 @@ const SwapCard = ({
     receiveTokenSymbol: SwapTokenSymbol;
   } | null>(null);
   const lastSuccessfulRouteOptionsRef = useRef<SwapRouteOption[]>([]);
+  const routeOptionsMergeRef = useRef<SwapRouteOption[]>([]);
 
   const resetSwapQuote = useCallback(() => {
     quoteRequestIdRef.current += 1;
@@ -999,6 +1052,7 @@ const SwapCard = ({
     inFlightQuoteKeyRef.current = null;
     lastSuccessfulQuoteRef.current = null;
     lastSuccessfulRouteOptionsRef.current = [];
+    routeOptionsMergeRef.current = [];
     setReceiveAmount("0.00");
     setIsRouteSearchPending(false);
     setQuoteFailureMessage(null);
@@ -1233,14 +1287,22 @@ const SwapCard = ({
     sellAmount !== "0.00" &&
     Boolean(receiveToken) &&
     isSupportedSwapPair(sellToken.symbol, receiveToken?.symbol);
-  const isReceiveQuoteLoading = Boolean(receiveToken) && isRouteSearchPending && !quoteFailureMessage;
   const bestDisplayedRouteOption = getBestRouteOption(routeOptions);
+  const isReceiveQuoteLoading =
+    Boolean(receiveToken) &&
+    isRouteSearchPending &&
+    !quoteFailureMessage &&
+    routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(bestDisplayedRouteOption),
+    ) === 0n;
   const receiveUsdValueLabel = (() => {
     if (!receiveToken) {
       return "$0.00";
     }
 
-    const bestOutputAmount = bestDisplayedRouteOption?.outputAmount;
+    const bestOutputAmount = getResolvedRouteOutputAmount(
+      bestDisplayedRouteOption,
+    );
     if (bestOutputAmount) {
       try {
         const bestOutputTokens = Number.parseFloat(
@@ -1386,11 +1448,6 @@ const SwapCard = ({
     parseFloat(receiveAmount) > 0 &&
     receiveAmount !== "0.00";
   const shouldFetchSwapQuotes = hasValidSwapQuoteInput;
-  const shouldRenderRouterDisplay =
-    shouldFetchSwapQuotes &&
-    routeOptions.some(
-      (option) => routeOutputAmountToBigInt(option.outputAmount) > 0n,
-    );
 
   const availableRouterIds = useMemo(() => {
     if (
@@ -1414,6 +1471,8 @@ const SwapCard = ({
 
     return routerIds;
   }, [arcNetworkMode, receiveToken, sellToken.symbol]);
+  const shouldRenderRouterDisplay =
+    shouldFetchSwapQuotes && availableRouterIds.length > 0;
 
   const availableSellTokens = useMemo(
     () =>
@@ -1511,7 +1570,7 @@ const SwapCard = ({
           sellTokenDecimals,
         ).toString();
 
-        quoteKey = `${sellToken.symbol}:${receiveToken.symbol}:${amountInWei}:${routerId || "auto"}:${slippageTolerance}`;
+        quoteKey = `${sellToken.symbol}:${receiveToken.symbol}:${amountInWei}:all:${slippageTolerance}`;
 
         if (inFlightQuoteKeyRef.current === quoteKey) {
           return;
@@ -1521,117 +1580,131 @@ const SwapCard = ({
         inFlightQuoteKeyRef.current = quoteKey;
         setQuoteFailureMessage(null);
         if (!shouldPreserveCurrentQuote) {
+          routeOptionsMergeRef.current = [];
+          setRouteOptions([]);
+          setSelectedRouterId(undefined);
+          setIsRouteSearchPending(true);
+        } else {
+          routeOptionsMergeRef.current = lastSuccessfulRouteOptionsRef.current;
           setIsRouteSearchPending(true);
         }
 
-        console.log("Getting quote from Tower Exchange:", {
+        const requestedDexIds =
+          routerId && availableRouterIds.includes(normalizeSwapRouteDexId(routerId))
+            ? [normalizeSwapRouteDexId(routerId)]
+            : [undefined];
+
+        console.log("Getting quotes from Tower Exchange:", {
           sellToken: sellToken.symbol,
           receiveToken: receiveToken.symbol,
           tokenInAddress,
           tokenOutAddress,
           amountInWei,
+          dexIds: requestedDexIds.filter(
+            (dexId): dexId is string => Boolean(dexId),
+          ),
         });
 
-        const quoteData = await getQuote(
-          tokenInAddress,
-          tokenOutAddress,
-          amountInWei,
-          slippageTolerance,
-          routerId,
-          ARC_NETWORK_CHAIN_ID[arcNetworkMode],
+        const commitMergedRouteOptions = (nextRouteOptions: SwapRouteOption[]) => {
+          if (activeQuoteKeyRef.current !== quoteKey) {
+            return;
+          }
+
+          const bestRouteOption = getBestRouteOption(
+            nextRouteOptions,
+            availableRouterIds,
+          );
+          const displayPrecision = getOutputDisplayDecimals(receiveToken.symbol);
+          const outputAmountForDisplay =
+            getResolvedRouteOutputAmount(bestRouteOption) || "0";
+          const quoteAmount = Number.parseFloat(
+            formatUnits(BigInt(outputAmountForDisplay || "0"), 18),
+          );
+          const nextReceiveAmount = Number.isFinite(quoteAmount)
+            ? quoteAmount.toFixed(displayPrecision)
+            : "0.00";
+
+          lastSuccessfulQuoteRef.current = {
+            sellAmountValue,
+            sellTokenSymbol: sellToken.symbol,
+            receiveTokenSymbol: receiveToken.symbol,
+          };
+          lastSuccessfulRouteOptionsRef.current = nextRouteOptions;
+          routeOptionsMergeRef.current = nextRouteOptions;
+
+          setRouteOptions(nextRouteOptions);
+          if (bestRouteOption?.dexId) {
+            setSelectedRouterId(bestRouteOption.dexId);
+          }
+          setQuoteFailureMessage(null);
+          setReceiveAmount(nextReceiveAmount);
+          didCommitQuote = true;
+        };
+
+        const incomingByDex: SwapRouteOption[][] = [];
+
+        await Promise.allSettled(
+          requestedDexIds.map(async (dexId) => {
+            const quoteData = await getQuote(
+              tokenInAddress,
+              tokenOutAddress,
+              amountInWei,
+              slippageTolerance,
+              dexId,
+              ARC_NETWORK_CHAIN_ID[arcNetworkMode],
+            );
+
+            if (!quoteData || activeQuoteKeyRef.current !== quoteKey) {
+              return;
+            }
+
+            const selectedDexId = normalizeSwapRouteDexId(
+              dexId || quoteData.route?.hops?.[0]?.dexId,
+            );
+            const currentBestRouteOption: SwapRouteOption | null = {
+              dexId: selectedDexId,
+              dexName:
+                quoteData.route?.hops?.[0]?.dexName ||
+                quoteData.route?.hops?.[0]?.dexId ||
+                selectedDexId,
+              outputAmount: quoteData.outputAmount,
+              routeType: quoteData.route.type,
+              gasEstimate: quoteData.gasEstimate,
+              quote: quoteData,
+            };
+            const incomingRouteOptions = getRouteOptionCandidates(
+              quoteData,
+              selectedDexId,
+              currentBestRouteOption,
+            );
+
+            if (incomingRouteOptions.length === 0) {
+              return;
+            }
+
+            incomingByDex.push(incomingRouteOptions);
+          }),
         );
 
-        if (!quoteData) {
-          if (activeQuoteKeyRef.current === quoteKey) {
-            setIsRouteSearchPending(false);
-            if (!shouldPreserveCurrentQuote) {
-              setQuoteFailureMessage("Quote unavailable. Try again.");
-            }
-          }
-          return;
+        if (activeQuoteKeyRef.current === quoteKey && incomingByDex.length > 0) {
+          commitMergedRouteOptions(
+            incomingByDex.reduce(
+              (merged, incoming) => mergeRouteOptionsByDexId(merged, incoming),
+              shouldPreserveCurrentQuote
+                ? lastSuccessfulRouteOptionsRef.current
+                : [],
+            ),
+          );
         }
 
         if (activeQuoteKeyRef.current !== quoteKey) {
           return;
         }
 
-        console.log("Quote received from Tower Exchange:", quoteData);
-
-        const selectedDexId = normalizeSwapRouteDexId(
-          quoteData.route?.hops?.[0]?.dexId,
-        );
-        const currentBestRouteOption: SwapRouteOption | null = {
-          dexId: selectedDexId,
-          dexName:
-            quoteData.route?.hops?.[0]?.dexName ||
-            quoteData.route?.hops?.[0]?.dexId ||
-            selectedDexId,
-          outputAmount: quoteData.outputAmount,
-          routeType: quoteData.route.type,
-          gasEstimate: quoteData.gasEstimate,
-          quote: quoteData,
-        };
-        const actualRouteOptions = getRouteOptionCandidates(
-          quoteData,
-          selectedDexId,
-          currentBestRouteOption,
-        );
-        const nextRouteOptions =
-          actualRouteOptions.length > 0
-            ? actualRouteOptions
-            : shouldPreserveCurrentQuote
-              ? lastSuccessfulRouteOptionsRef.current
-              : [];
-        const bestRouteOption =
-          getBestRouteOption(nextRouteOptions, availableRouterIds) ||
-          currentBestRouteOption;
-        const nextSelectedRouterId = bestRouteOption?.dexId || selectedDexId;
-
-        if (nextSelectedRouterId) {
-          setSelectedRouterId(nextSelectedRouterId);
-          console.log(
-            routerId ? "Selected router from quote:" : "Auto-selected router from backend:",
-            bestRouteOption?.dexName || quoteData.route.hops[0]?.dexName,
-            "ID:",
-            nextSelectedRouterId,
-          );
+        if (routeOptionsMergeRef.current.length === 0 && !shouldPreserveCurrentQuote) {
+          setQuoteFailureMessage("Quote unavailable. Try again.");
         }
 
-        setRouteOptions(nextRouteOptions);
-
-        const displayPrecision = getOutputDisplayDecimals(receiveToken.symbol);
-        const outputAmountForDisplay =
-          bestRouteOption?.outputAmount || quoteData.outputAmount;
-        const quoteAmount = Number.parseFloat(
-          formatUnits(BigInt(outputAmountForDisplay || "0"), 18),
-        );
-        const priceImpactPercent =
-          typeof quoteData.priceImpact === "number"
-            ? (quoteData.priceImpact / 100).toFixed(2)
-            : quoteData.priceImpact;
-
-        console.log("Quote conversion details:", {
-          outputAmount_wei: outputAmountForDisplay,
-          quoteAmount_tokens: quoteAmount,
-          priceImpact: priceImpactPercent,
-          displayPrecision,
-          routeCount: nextRouteOptions.length,
-        });
-
-        const nextReceiveAmount = Number.isFinite(quoteAmount)
-          ? quoteAmount.toFixed(displayPrecision)
-          : "0.00";
-
-        lastSuccessfulQuoteRef.current = {
-          sellAmountValue,
-          sellTokenSymbol: sellToken.symbol,
-          receiveTokenSymbol: receiveToken.symbol,
-        };
-        lastSuccessfulRouteOptionsRef.current = nextRouteOptions;
-
-        setQuoteFailureMessage(null);
-        setReceiveAmount(nextReceiveAmount);
-        didCommitQuote = true;
         setIsRouteSearchPending(false);
       } catch (error) {
         console.error("Error getting swap quote:", error);
@@ -1726,7 +1799,7 @@ const SwapCard = ({
       try {
         const sellTokenDecimals = TOKEN_DECIMALS[sellToken.symbol] || 18;
         const amountInWei = parseUnits(value, sellTokenDecimals).toString();
-        activeQuoteKeyRef.current = `${sellToken.symbol}:${receiveToken?.symbol}:${amountInWei}:auto:${slippageTolerance}`;
+        activeQuoteKeyRef.current = `${sellToken.symbol}:${receiveToken?.symbol}:${amountInWei}:all:${slippageTolerance}`;
       } catch {
         activeQuoteKeyRef.current = null;
       }
@@ -3194,6 +3267,7 @@ const SwapCard = ({
                 outputTokenUsdPrice={receiveTokenWithLivePrice?.usdPrice}
                 outputTokenSymbol={receiveToken?.symbol}
                 availableRouterIds={availableRouterIds}
+                isQuoteSearchPending={isRouteSearchPending}
               />
             </div>
           )}

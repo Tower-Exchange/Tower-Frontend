@@ -31,6 +31,7 @@
     "@solana/web3.js": "^1.98.4",
     "@supabase/supabase-js": "^2.39.0",
     "@tanstack/react-query": "^5.99.2",
+    "caniuse-lite": "^1.0.30001810",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "framer-motion": "^12.25.0",

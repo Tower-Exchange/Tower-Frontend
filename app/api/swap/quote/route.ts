@@ -1158,16 +1158,28 @@ export async function handleSwapQuotePost(request: NextRequest) {
     }
 
     if (candidateQuotes.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No valid route found" },
-        { status: 404 },
-      );
+      return NextResponse.json({
+        success: false,
+        error: "No valid route found",
+        data: { routeOptions: [] },
+      });
     }
+
+    const routeOptions = dedupeRouteOptions(backendResult.routeOptions);
+    const requestedRouteOption = normalizedRequestedDexId
+      ? routeOptions.find(
+          (option) =>
+            (normalizeDexId(option.dexId) || option.dexId) ===
+            normalizedRequestedDexId,
+        )
+      : null;
 
     const requestedQuote = normalizedRequestedDexId
       ? candidateQuotes.find(
           (quote) => routeOptionFromQuote(quote).dexId === normalizedRequestedDexId,
-        )
+        ) ||
+        (requestedRouteOption?.quote as BackendQuote | undefined) ||
+        null
       : null;
 
     const bestQuoteCandidate =
@@ -1178,8 +1190,6 @@ export async function handleSwapQuotePost(request: NextRequest) {
           : best,
       );
 
-    const routeOptions = dedupeRouteOptions(backendResult.routeOptions);
-
     console.info("[swap/quote] backend quote summary", {
       quotesFound: candidateQuotes.length,
       routeOptionsFound: routeOptions.length,
@@ -1188,17 +1198,26 @@ export async function handleSwapQuotePost(request: NextRequest) {
     });
 
     if (normalizedRequestedDexId && !requestedQuote) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            normalizedRequestedDexId === TOWER_DEX_ID
-              ? "Tower route is temporarily unavailable. Wait a few seconds and try again."
-              : `No valid ${normalizedRequestedDexId} route found for this swap`,
-          data: { routeOptions },
-        },
-        { status: 404 },
-      );
+      const requestedOutputAmount = requestedRouteOption?.outputAmount;
+      if (requestedRouteOption && requestedOutputAmount && requestedOutputAmount !== "0") {
+        return NextResponse.json({
+          success: true,
+          data: enrichPublicSwapQuote({
+            ...(requestedRouteOption.quote || bestQuoteCandidate),
+            outputAmount: requestedOutputAmount,
+            routeOptions,
+          }),
+        });
+      }
+
+      return NextResponse.json({
+        success: false,
+        error:
+          normalizedRequestedDexId === TOWER_DEX_ID
+            ? "Tower route is temporarily unavailable. Wait a few seconds and try again."
+            : `No valid ${normalizedRequestedDexId} route found for this swap`,
+        data: { routeOptions },
+      });
     }
 
     const bestRouteOption = routeOptions.reduce<RouteOption | null>(

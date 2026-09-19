@@ -720,7 +720,7 @@ export async function getDzapQuote(params: {
     const pathSteps = quote.path ?? [];
     const hops =
       pathSteps.length > 0
-        ? pathSteps.map((step) => ({
+        ? pathSteps.map((step: any) => ({
             dexId: TOWER_DEX_ID,
             dex: TOWER_DEX_ID,
             dexName: TOWER_DEX_NAME,
@@ -738,7 +738,7 @@ export async function getDzapQuote(params: {
               dexRouter: routerAddress,
               path: [srcToken, destToken],
               amountIn: swapInputAmountNative.toString(),
-              amountOut: amountOut.toString(),
+              amountOut: quote.destAmount,
               priceImpact,
             },
           ];
@@ -972,11 +972,13 @@ export async function buildDzapSwapTransaction(params: {
       }
     : null;
 
-  const updatedDestAmount = Object.values(built.updatedQuotes || {})[0];
-  const expectedUserOutput =
+  const updatedDestAmount = Object.values((built as any)?.updatedQuotes || {})[0];
+  const rawExpectedOutput =
     updatedDestAmount ||
     params.quote.outputAmountNative ||
-    params.quote.minOutNative;
+    params.quote.minOutNative ||
+    "";
+  const expectedUserOutput = typeof rawExpectedOutput === "string" ? rawExpectedOutput : String(rawExpectedOutput);
   const feeRecipient = params.quote.feeRecipient
     ? getAddress(params.quote.feeRecipient)
     : DZAP_SWAP_FEE_RECIPIENT;

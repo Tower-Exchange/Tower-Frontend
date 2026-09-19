@@ -199,6 +199,66 @@ export function requireWalletSession(request: NextRequest) {
   }
 }
 
+const CLAIMED_WALLET_KEYS = ["walletAddress", "wallet_address", "wallet"] as const;
+
+function firstClaimedWalletValue(
+  request: NextRequest,
+  body?: Record<string, unknown> | null,
+) {
+  const searchParams = request.nextUrl.searchParams;
+  const candidates: unknown[] = [
+    searchParams.get("walletAddress"),
+    searchParams.get("wallet_address"),
+    searchParams.get("wallet"),
+  ];
+
+  if (body) {
+    for (const key of CLAIMED_WALLET_KEYS) {
+      candidates.push(body[key]);
+    }
+  }
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Require a signed wallet session and reject spoofed body/query wallets.
+ * Identity is always the session wallet; a matching claimed wallet is allowed.
+ */
+export function requireOwnedWalletSession(
+  request: NextRequest,
+  body?: Record<string, unknown> | null,
+) {
+  const session = requireWalletSession(request);
+  if (session.response || !session.wallet) {
+    return session;
+  }
+
+  const claimedRaw = firstClaimedWalletValue(request, body);
+  if (!claimedRaw) {
+    return session;
+  }
+
+  const claimed = normalizeWalletAddress(claimedRaw);
+  if (!claimed || claimed !== session.wallet) {
+    return {
+      wallet: null as string | null,
+      response: walletError(
+        "Wallet session does not match requested wallet.",
+        403,
+      ),
+    };
+  }
+
+  return session;
+}
+
 export function attachWalletSessionCookie(
   response: NextResponse,
   sessionToken: string,

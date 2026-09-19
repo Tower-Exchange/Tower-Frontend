@@ -550,3 +550,40 @@ export async function updateSwapFeeConfirmation(
   }
 }
 
+async function deleteOwnedUserRecord(
+  path: string,
+  id: string,
+  walletAddress: string,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const params = new URLSearchParams({ id, walletAddress });
+    const result = await userApiFetch(`${path}?${params.toString()}`, {
+      method: "DELETE",
+      walletAddress,
+    });
+
+    if (!result.ok) {
+      return { success: false, error: result.error };
+    }
+
+    return { success: true };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
+
+export async function deleteActivityById(id: string, walletAddress: string) {
+  return deleteOwnedUserRecord("/api/user/activities", id, walletAddress);
+}
+
+export async function deleteSwapFeeById(id: string, walletAddress: string) {
+  return deleteOwnedUserRecord("/api/user/swap-fees", id, walletAddress);
+}
+
+export async function deleteBridgeFeeById(id: string, walletAddress: string) {
+  return deleteOwnedUserRecord("/api/user/bridge-fees", id, walletAddress);
+}
+

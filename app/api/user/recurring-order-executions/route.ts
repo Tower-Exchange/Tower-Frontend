@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/server/devApiSupabase";
 import { walletError } from "@/lib/server/wallet";
-import { requireWalletSession } from "@/lib/server/walletSession";
+import { requireOwnedWalletSession } from "@/lib/server/walletSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
+    const { wallet, response } = requireOwnedWalletSession(request);
     if (response || !wallet) {
       return response ?? walletError("Wallet session required.", 401);
     }
@@ -45,15 +45,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const recurringOrderId =
       typeof body.recurring_order_id === "string"
