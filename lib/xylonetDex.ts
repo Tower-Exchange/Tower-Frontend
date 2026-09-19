@@ -10,13 +10,12 @@ import {
   type Hex,
 } from "viem";
 
-import {
-  AERO_CHAIN_ID,
-  AERO_MAINNET_TOKENS,
-  aeroArcMainnet,
-} from "@/lib/aeroDex";
+import { AERO_CHAIN_ID, AERO_MAINNET_TOKENS, aeroArcMainnet } from "@/lib/aeroDex";
 import { getArcMainnetRpcUrls } from "@/lib/arcRpc";
 import { getTokenDecimalsByAddress } from "@/lib/swapApiContract";
+import { isXylonetEnabled } from "@/lib/xylonetEnabled";
+
+export { isXylonetEnabled };
 
 export const XYLONET_DEX_ID = "xylonet-adapter" as const;
 export const XYLONET_DEX_NAME = "XyloNet" as const;
@@ -31,6 +30,9 @@ export const XYLONET_PERMIT2_ADDRESS =
   "0x000000000022D473030F116dDEE9F6B43aC78BA3" as Address;
 
 const LIFI_QUOTE_URL = "https://li.quest/v1/quote";
+const LIFI_NATIVE_TOKEN =
+  "0x0000000000000000000000000000000000000000" as Address;
+const ARC_NATIVE_USDC_ONCHAIN_DECIMALS = 18;
 const XYLONET_INTEGRATOR = "xylonet";
 const XYLONET_INTEGRATOR_FEE = "0.001";
 const XYLONET_QUOTE_ACCOUNT_DEFAULT =
@@ -46,7 +48,7 @@ const DEFAULT_TOWER_SWAP_FEE_BPS = 30;
 const EXECUTOR_FEE_STATE_TTL_MS = 30_000;
 const QUOTE_TIMEOUT_MS = 8_000;
 const BUILD_TIMEOUT_MS = 20_000;
-const QUOTE_CACHE_SOFT_TTL_MS = 12_000;
+const QUOTE_CACHE_SOFT_TTL_MS = 20_000;
 const QUOTE_CACHE_HARD_TTL_MS = 120_000;
 
 const LIFI_SWAP_EXECUTOR_MAINNET_DEFAULT =
@@ -160,6 +162,7 @@ const LIFI_ADAPTER_ABI = [
 const NATIVE_TOKEN_SENTINELS = new Set([
   "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
   "0x0000000000000000000000000000000000000000",
+  AERO_MAINNET_TOKENS.USDC.toLowerCase(),
 ]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -170,25 +173,6 @@ const asString = (value: unknown) =>
 
 const readErrorMessage = (error: unknown) =>
   error instanceof Error ? error.message : String(error);
-
-const parseBooleanEnv = (value?: string | null) => {
-  if (!value) {
-    return null;
-  }
-  const normalized = value.trim().toLowerCase();
-  if (normalized === "false" || normalized === "0" || normalized === "off") {
-    return false;
-  }
-  if (normalized === "true" || normalized === "1" || normalized === "on") {
-    return true;
-  }
-  return null;
-};
-
-export const isXylonetEnabled = () =>
-  parseBooleanEnv(process.env.XYLONET_ENABLED) ??
-  parseBooleanEnv(process.env.NEXT_PUBLIC_XYLONET_ENABLED) ??
-  true;
 
 export const isXylonetSupportedChain = (chainId: number) =>
   chainId === XYLONET_CHAIN_ID;
@@ -312,6 +296,46 @@ const getXylonetIntegrator = () =>
 
 const getXylonetIntegratorFee = () =>
   process.env.XYLONET_LIFI_FEE?.trim() || XYLONET_INTEGRATOR_FEE;
+
+const getLifiApiKey = () =>
+  process.env.LIFI_API_KEY?.trim() ||
+  process.env.XYLONET_LIFI_API_KEY?.trim() ||
+  "";
+
+const isArcNativeUsdc = (token: string) =>
+  token.toLowerCase() === AERO_MAINNET_TOKENS.USDC.toLowerCase();
+
+const toLifiTokenAddress = (token: Address): Address =>
+  isArcNativeUsdc(token) ? LIFI_NATIVE_TOKEN : token;
+
+const getLifiTokenDecimals = (token: Address) =>
+  isArcNativeUsdc(token)
+    ? ARC_NATIVE_USDC_ONCHAIN_DECIMALS
+    : getTokenDecimalsByAddress(token);
+
+let lifiRateLimitedUntil = 0;
+
+const parseLifiRetryDelayMs = (
+  message: string,
+  retryAfterHeader?: string | null,
+) => {
+  const retryAfterSeconds = Number(retryAfterHeader);
+  if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+    return retryAfterSeconds * 1_000;
+  }
+
+  const minutes = message.match(/retry in (\d+)\s*minutes?/i);
+  if (minutes) {
+    return Number(minutes[1]) * 60_000;
+  }
+
+  const seconds = message.match(/retry in (\d+)\s*seconds?/i);
+  if (seconds) {
+    return Number(seconds[1]) * 1_000;
+  }
+
+  return 60_000;
+};
 
 const getQuoteAccount = (account?: string) =>
   resolveOptionalAddress(account) ||
@@ -585,12 +609,28 @@ const fetchLifiQuote = async (params: {
   toAddress?: Address;
   skipSimulation?: boolean;
 }): Promise<LifiQuoteResponse> => {
+  if (Date.now() < lifiRateLimitedUntil) {
+    const retryMinutes = Math.max(
+      1,
+      Math.ceil((lifiRateLimitedUntil - Date.now()) / 60_000),
+    );
+    throw new Error(`Rate limit exceeded, retry in ${retryMinutes} minutes`);
+  }
+
+  const appSrcDecimals = getTokenDecimalsByAddress(params.srcToken);
+  const lifiSrcDecimals = getLifiTokenDecimals(params.srcToken);
+  const fromAmount = scaleAmount(
+    BigInt(params.amount),
+    appSrcDecimals,
+    lifiSrcDecimals,
+  ).toString();
+
   const url = new URL(getLifiQuoteUrl());
   url.searchParams.set("fromChain", String(XYLONET_CHAIN_ID));
   url.searchParams.set("toChain", String(XYLONET_CHAIN_ID));
-  url.searchParams.set("fromToken", params.srcToken);
-  url.searchParams.set("toToken", params.destToken);
-  url.searchParams.set("fromAmount", params.amount);
+  url.searchParams.set("fromToken", toLifiTokenAddress(params.srcToken));
+  url.searchParams.set("toToken", toLifiTokenAddress(params.destToken));
+  url.searchParams.set("fromAmount", fromAmount);
   url.searchParams.set("fromAddress", params.fromAddress);
   url.searchParams.set("toAddress", params.toAddress || params.fromAddress);
   url.searchParams.set("slippage", slippageBpsToDecimal(params.slippageBps));
@@ -600,17 +640,28 @@ const fetchLifiQuote = async (params: {
     url.searchParams.set("skipSimulation", "true");
   }
 
+  const apiKey = getLifiApiKey();
   const response = await fetch(url, {
     method: "GET",
-    headers: { Accept: "application/json" },
+    headers: {
+      Accept: "application/json",
+      ...(apiKey ? { "x-lifi-api-key": apiKey } : {}),
+    },
     cache: "no-store",
   });
   const payload = (await response.json()) as LifiQuoteResponse;
+  const errorMessage =
+    asString(payload.message) || `LI.FI quote failed with status ${response.status}`;
+
+  if (response.status === 429) {
+    lifiRateLimitedUntil =
+      Date.now() +
+      parseLifiRetryDelayMs(errorMessage, response.headers.get("retry-after"));
+    throw new Error(errorMessage);
+  }
 
   if (!response.ok) {
-    throw new Error(
-      asString(payload.message) || `LI.FI quote failed with status ${response.status}`,
-    );
+    throw new Error(errorMessage);
   }
 
   return payload;
@@ -641,6 +692,8 @@ const mapLifiQuote = (params: {
   if (amountOut <= 0n) {
     return null;
   }
+
+  const lifiDestDecimals = getLifiTokenDecimals(params.destToken);
 
   const approvalAddress =
     resolveOptionalAddress(params.lifiQuote.estimate?.approvalAddress) ||
@@ -708,10 +761,10 @@ const mapLifiQuote = (params: {
     ).toString(),
     outputAmount: scaleAmount(
       amountOut,
-      params.destDecimals,
+      lifiDestDecimals,
       NORMALIZED_DECIMALS,
     ).toString(),
-    minOut: scaleAmount(minOut, params.destDecimals, NORMALIZED_DECIMALS).toString(),
+    minOut: scaleAmount(minOut, lifiDestDecimals, NORMALIZED_DECIMALS).toString(),
     inputAmountNative: params.amountIn.toString(),
     swapInputAmountNative: params.swapInputAmountNative.toString(),
     outputAmountNative: amountOut.toString(),
@@ -803,6 +856,16 @@ export async function getXylonetQuote(params: {
   }
 
   const staleCachedQuote = readCachedQuote(cacheKey, QUOTE_CACHE_HARD_TTL_MS);
+  if (Date.now() < lifiRateLimitedUntil) {
+    if (staleCachedQuote) {
+      return staleCachedQuote;
+    }
+    const anyCached = xylonetQuoteCache.get(cacheKey);
+    if (anyCached) {
+      return anyCached.quote;
+    }
+    return null;
+  }
 
   const loadFreshXylonetQuote = async (): Promise<XylonetQuote | null> => {
     const srcDecimals = getTokenDecimalsByAddress(srcToken);

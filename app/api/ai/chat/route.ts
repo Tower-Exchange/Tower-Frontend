@@ -15,6 +15,7 @@ import {
 } from "@/lib/server/towerAiBackend";
 import { handleSwapQuotePost } from "@/app/api/swap/quote/route";
 import { handleSwapBuildTxPost } from "@/app/api/swap/build-tx/route";
+import { isXylonetEnabled } from "@/lib/xylonetEnabled";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -337,7 +338,7 @@ const normalizeSwapDexId = (dexId?: string | null): AiSwapDexId | undefined => {
     normalized === "xylo-net" ||
     normalized.includes("xylonet")
   ) {
-    return "xylonet-adapter";
+    return isXylonetEnabled() ? "xylonet-adapter" : undefined;
   }
 
   return AI_SWAP_DEX_IDS.includes(normalized as AiSwapDexId)
@@ -394,6 +395,9 @@ const extractSwapDexPreference = (
   }
 
   for (const dexId of AI_SWAP_DEX_IDS) {
+    if (dexId === "xylonet-adapter" && !isXylonetEnabled()) {
+      continue;
+    }
     const aliases = AI_SWAP_DEX_ALIASES[dexId];
     if (
       aliases.some((alias) =>

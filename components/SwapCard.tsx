@@ -25,6 +25,7 @@ import {
 } from "@/lib/arcNetwork";
 import { getArcSwapTokenAddress } from "@/lib/aeroDex";
 import { getArcRpcProxyPath } from "@/lib/arcRpc";
+import { isXylonetEnabled } from "@/lib/xylonetEnabled";
 import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
 import { useTowerSwap, type SwapQuote, type SwapRouteOption } from "@/lib/hooks/useTowerSwap";
 import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
@@ -68,6 +69,7 @@ import {
 import arcTestnetLogo from "@/public/assets/ARCSvg.svg";
 const NATIVE_USDC_GAS_RESERVE = 0.05;
 const QUOTE_REFRESH_INTERVAL_MS = 10000;
+const QUOTE_REVEAL_WAIT_MS = 12_000;
 const TOKEN_PRICE_REFRESH_INTERVAL_MS = 60_000;
 const SWAP_SUCCESS_NOTIFICATION_DURATION_MS = 10000;
 const SWAP_SUCCESS_RESET_DELAY_MS = SWAP_SUCCESS_NOTIFICATION_DURATION_MS + 500;
@@ -750,6 +752,28 @@ const mergeRouteOptionsByDexId = (
   return Array.from(optionsByDexId.values());
 };
 
+const hasQuotesForAllRouters = (
+  options: SwapRouteOption[],
+  routerIds: string[],
+) => {
+  if (routerIds.length === 0) {
+    return options.length > 0;
+  }
+
+  const quotedDexIds = new Set(
+    options
+      .filter(
+        (option) =>
+          routeOutputAmountToBigInt(getResolvedRouteOutputAmount(option)) > 0n,
+      )
+      .map((option) => normalizeSwapRouteDexId(option.dexId)),
+  );
+
+  return routerIds.every((routerId) =>
+    quotedDexIds.has(normalizeSwapRouteDexId(routerId)),
+  );
+};
+
 const getBestRouteOption = (
   options: SwapRouteOption[],
   routerPriority: string[] = [],
@@ -1045,11 +1069,22 @@ const SwapCard = ({
   } | null>(null);
   const lastSuccessfulRouteOptionsRef = useRef<SwapRouteOption[]>([]);
   const routeOptionsMergeRef = useRef<SwapRouteOption[]>([]);
+  const pendingRevealQuoteKeyRef = useRef<string | null>(null);
+  const quoteRevealTimerRef = useRef<number | null>(null);
+
+  const clearQuoteRevealTimer = useCallback(() => {
+    if (quoteRevealTimerRef.current !== null) {
+      window.clearTimeout(quoteRevealTimerRef.current);
+      quoteRevealTimerRef.current = null;
+    }
+  }, []);
 
   const resetSwapQuote = useCallback(() => {
     quoteRequestIdRef.current += 1;
     activeQuoteKeyRef.current = null;
     inFlightQuoteKeyRef.current = null;
+    pendingRevealQuoteKeyRef.current = null;
+    clearQuoteRevealTimer();
     lastSuccessfulQuoteRef.current = null;
     lastSuccessfulRouteOptionsRef.current = [];
     routeOptionsMergeRef.current = [];
@@ -1058,7 +1093,9 @@ const SwapCard = ({
     setQuoteFailureMessage(null);
     setRouteOptions([]);
     setSelectedRouterId(undefined);
-  }, []);
+  }, [clearQuoteRevealTimer]);
+
+  useEffect(() => () => clearQuoteRevealTimer(), [clearQuoteRevealTimer]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1458,10 +1495,17 @@ const SwapCard = ({
     }
 
     if (arcNetworkMode === "mainnet") {
-      return ["aero", "tower-dex", "xylonet-adapter"];
+      return [
+        "aero",
+        "tower-dex",
+        ...(isXylonetEnabled() ? ["xylonet-adapter"] : []),
+      ];
     }
 
-    const routerIds = ["xylonet-adapter", "synthra"];
+    const routerIds = [
+      ...(isXylonetEnabled() ? ["xylonet-adapter"] : []),
+      "synthra",
+    ];
 
     if (receiveToken.symbol !== "USDC") {
       routerIds.push("unitflow");
@@ -1530,7 +1574,6 @@ const SwapCard = ({
   const getQuoteForSwap = useCallback(
     async (sellAmountValue: string, routerId?: string) => {
       let quoteKey: string | null = null;
-      let didCommitQuote = false;
 
       try {
         if (SWAPS_DISABLED) {
@@ -1579,20 +1622,26 @@ const SwapCard = ({
         activeQuoteKeyRef.current = quoteKey;
         inFlightQuoteKeyRef.current = quoteKey;
         setQuoteFailureMessage(null);
-        if (!shouldPreserveCurrentQuote) {
+
+        const isPendingRevealForKey = pendingRevealQuoteKeyRef.current === quoteKey;
+        if (!shouldPreserveCurrentQuote && !isPendingRevealForKey) {
           routeOptionsMergeRef.current = [];
           setRouteOptions([]);
           setSelectedRouterId(undefined);
           setIsRouteSearchPending(true);
         } else {
-          routeOptionsMergeRef.current = lastSuccessfulRouteOptionsRef.current;
+          if (!isPendingRevealForKey) {
+            routeOptionsMergeRef.current = lastSuccessfulRouteOptionsRef.current;
+          }
           setIsRouteSearchPending(true);
         }
 
         const requestedDexIds =
           routerId && availableRouterIds.includes(normalizeSwapRouteDexId(routerId))
             ? [normalizeSwapRouteDexId(routerId)]
-            : [undefined];
+            : availableRouterIds.length > 0
+              ? availableRouterIds
+              : [undefined];
 
         console.log("Getting quotes from Tower Exchange:", {
           sellToken: sellToken.symbol,
@@ -1638,8 +1687,51 @@ const SwapCard = ({
           }
           setQuoteFailureMessage(null);
           setReceiveAmount(nextReceiveAmount);
-          didCommitQuote = true;
         };
+
+        const revealRouteOptions = (
+          nextRouteOptions: SwapRouteOption[],
+          force: boolean,
+        ) => {
+          if (activeQuoteKeyRef.current !== quoteKey) {
+            return false;
+          }
+
+          const canReveal =
+            force ||
+            availableRouterIds.length === 0 ||
+            hasQuotesForAllRouters(nextRouteOptions, availableRouterIds);
+          if (!canReveal) {
+            return false;
+          }
+
+          clearQuoteRevealTimer();
+          pendingRevealQuoteKeyRef.current = null;
+          commitMergedRouteOptions(nextRouteOptions);
+          setIsRouteSearchPending(false);
+          return true;
+        };
+
+        if (pendingRevealQuoteKeyRef.current !== quoteKey) {
+          pendingRevealQuoteKeyRef.current = quoteKey;
+          clearQuoteRevealTimer();
+          quoteRevealTimerRef.current = window.setTimeout(() => {
+            quoteRevealTimerRef.current = null;
+            if (activeQuoteKeyRef.current !== quoteKey) {
+              return;
+            }
+
+            if (routeOptionsMergeRef.current.length > 0) {
+              revealRouteOptions(routeOptionsMergeRef.current, true);
+              return;
+            }
+
+            setIsRouteSearchPending(false);
+            if (!shouldPreserveCurrentQuote) {
+              setQuoteFailureMessage("Quote unavailable. Try again.");
+            }
+          }, QUOTE_REVEAL_WAIT_MS);
+        }
 
         const incomingByDex: SwapRouteOption[][] = [];
 
@@ -1686,44 +1778,39 @@ const SwapCard = ({
           }),
         );
 
-        if (activeQuoteKeyRef.current === quoteKey && incomingByDex.length > 0) {
-          commitMergedRouteOptions(
-            incomingByDex.reduce(
-              (merged, incoming) => mergeRouteOptionsByDexId(merged, incoming),
-              shouldPreserveCurrentQuote
-                ? lastSuccessfulRouteOptionsRef.current
-                : [],
-            ),
-          );
-        }
-
         if (activeQuoteKeyRef.current !== quoteKey) {
           return;
         }
 
-        if (routeOptionsMergeRef.current.length === 0 && !shouldPreserveCurrentQuote) {
-          setQuoteFailureMessage("Quote unavailable. Try again.");
-        }
+        const nextRouteOptions = incomingByDex.reduce(
+          (merged, incoming) => mergeRouteOptionsByDexId(merged, incoming),
+          routeOptionsMergeRef.current,
+        );
+        routeOptionsMergeRef.current = nextRouteOptions;
 
-        setIsRouteSearchPending(false);
+        if (nextRouteOptions.length > 0) {
+          revealRouteOptions(nextRouteOptions, true);
+        }
       } catch (error) {
         console.error("Error getting swap quote:", error);
 
-        const shouldPreserveCurrentQuote =
+        const shouldKeepCurrentQuote =
           lastSuccessfulQuoteRef.current?.sellAmountValue === sellAmountValue &&
           lastSuccessfulQuoteRef.current?.sellTokenSymbol === sellToken.symbol &&
-          lastSuccessfulQuoteRef.current?.receiveTokenSymbol === receiveToken?.symbol;
+          lastSuccessfulQuoteRef.current?.receiveTokenSymbol ===
+            receiveToken?.symbol;
 
-        if (activeQuoteKeyRef.current === quoteKey) {
+        if (
+          activeQuoteKeyRef.current === quoteKey &&
+          routeOptionsMergeRef.current.length === 0 &&
+          !shouldKeepCurrentQuote
+        ) {
+          clearQuoteRevealTimer();
+          pendingRevealQuoteKeyRef.current = null;
           setIsRouteSearchPending(false);
-          if (!shouldPreserveCurrentQuote) {
-            setQuoteFailureMessage("Quote unavailable. Try again.");
-          }
+          setQuoteFailureMessage("Quote unavailable. Try again.");
         }
       } finally {
-        if (activeQuoteKeyRef.current === quoteKey && didCommitQuote) {
-          setIsRouteSearchPending(false);
-        }
         if (inFlightQuoteKeyRef.current === quoteKey) {
           inFlightQuoteKeyRef.current = null;
         }
@@ -1737,6 +1824,7 @@ const SwapCard = ({
       slippageTolerance,
       availableRouterIds,
       arcNetworkMode,
+      clearQuoteRevealTimer,
     ],
   );
   const getQuoteForSwapRef = useRef(getQuoteForSwap);
