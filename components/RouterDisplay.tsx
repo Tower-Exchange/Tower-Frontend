@@ -339,28 +339,14 @@ export default function RouterDisplay({
 
       return route.option !== null && route.hasQuote;
     });
-  const expectedRouterCount =
-    availableRouterIdSet.size > 0
-      ? availableRouterIdSet.size
-      : unsortedQuotedRoutes.length;
-  const quotedRouterCount = unsortedQuotedRoutes.filter(
-    (route) => route.hasQuote,
-  ).length;
-  const hidePartialQuotes =
-    isQuoteSearchPending &&
-    expectedRouterCount > 0 &&
-    quotedRouterCount < expectedRouterCount;
-
   const allQuotedRoutes = [...unsortedQuotedRoutes].sort(
     (leftRoute, rightRoute) => {
-      if (!hidePartialQuotes) {
-        if (leftRoute.hasQuote !== rightRoute.hasQuote) {
-          return leftRoute.hasQuote ? -1 : 1;
-        }
+      if (leftRoute.hasQuote !== rightRoute.hasQuote) {
+        return leftRoute.hasQuote ? -1 : 1;
+      }
 
-        if (leftRoute.outputAmount !== rightRoute.outputAmount) {
-          return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
-        }
+      if (leftRoute.outputAmount !== rightRoute.outputAmount) {
+        return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
       }
 
       const leftFallback = leftRoute.option?.isFallback === true;
@@ -378,7 +364,8 @@ export default function RouterDisplay({
       }
 
       return leftRoute.index - rightRoute.index;
-    });
+    },
+  );
 
   if (allQuotedRoutes.length === 0) {
     return null;
@@ -386,9 +373,8 @@ export default function RouterDisplay({
 
   const displayedRoutes =
     availableRouterIdSet.size > 0 ? allQuotedRoutes : allQuotedRoutes.slice(0, 3);
-  const bestQuotedRoute = hidePartialQuotes
-    ? null
-    : displayedRoutes.find((route) => route.hasQuote) ?? null;
+  const bestQuotedRoute =
+    displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
   const dexCount = allQuotedRoutes.length;
   const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
@@ -478,12 +464,10 @@ export default function RouterDisplay({
         {displayedRoutes.map(({ router, option, hasQuote }) => {
           const isBestPrice = Boolean(bestPriceRouterId) && router.id === bestPriceRouterId;
           const isSelected = isBestPrice;
-          const isPendingQuote =
-            hidePartialQuotes || (!hasQuote && isQuoteSearchPending);
-          const routeUsdAmount =
-            hasQuote && !hidePartialQuotes
-              ? getRouteUsdValue(option, outputTokenUsdPrice, outputTokenSymbol)
-              : null;
+          const isPendingQuote = !hasQuote && isQuoteSearchPending;
+          const routeUsdAmount = hasQuote
+            ? getRouteUsdValue(option, outputTokenUsdPrice, outputTokenSymbol)
+            : null;
           const routeUsdValue = formatRouteUsdValue(routeUsdAmount);
           const routeAddedValue = isBestPrice
             ? formatRouteAddedValue(routeUsdAmount, inputUsdValue)
@@ -495,7 +479,7 @@ export default function RouterDisplay({
               role="listitem"
               className={`relative flex min-h-[52px] w-full items-center justify-between gap-2 rounded-sm px-2.5 py-2 text-left transition-colors sm:gap-3 sm:px-3 ${
                 isSelected
-                  ? "shadow-[0_2px_6px_rgba(0,0,0,.35)]"
+                  ? "overflow-hidden shadow-[0_2px_6px_rgba(0,0,0,.35)]"
                   : "border border-transparent"
               }`}
             >
