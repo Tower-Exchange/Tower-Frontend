@@ -189,7 +189,55 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
             ? responseData.data
             : responseData;
 
+        const recoverQuoteFromRouteOptions = (): SwapQuote | null => {
+          const routeOptions = Array.isArray(quote?.routeOptions)
+            ? quote.routeOptions
+            : [];
+          if (routeOptions.length === 0) {
+            return null;
+          }
+
+          const requestedDexId = String(dexId || "")
+            .trim()
+            .toLowerCase()
+            .replace(/[\s_]+/g, "-");
+          const matchingOption =
+            (requestedDexId
+              ? routeOptions.find((option) => {
+                  const optionDexId = String(option.dexId || "")
+                    .trim()
+                    .toLowerCase()
+                    .replace(/[\s_]+/g, "-");
+                  return (
+                    optionDexId === requestedDexId ||
+                    (requestedDexId === "tower-dex" &&
+                      (optionDexId === "tower" || optionDexId === "tower-amm")) ||
+                    (requestedDexId === "xylonet-adapter" &&
+                      (optionDexId === "xylonet" || optionDexId === "xylo"))
+                  );
+                })
+              : null) || routeOptions[0];
+
+          const recoveredQuote = matchingOption?.quote || quote;
+          const outputAmount =
+            recoveredQuote?.outputAmount || matchingOption?.outputAmount;
+          if (!recoveredQuote || !outputAmount) {
+            return null;
+          }
+
+          return {
+            ...recoveredQuote,
+            outputAmount,
+            routeOptions,
+          };
+        };
+
         if (response.status === 404 || responseData?.success === false) {
+          const recoveredQuote = recoverQuoteFromRouteOptions();
+          if (recoveredQuote) {
+            return recoveredQuote;
+          }
+
           console.debug('[useTowerSwap] quote unavailable', {
             inputToken,
             outputToken,
@@ -208,7 +256,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
         }
 
         if (!quote?.outputAmount) {
-          return null;
+          return recoverQuoteFromRouteOptions();
         }
 
         console.debug('[useTowerSwap] quote response received', {

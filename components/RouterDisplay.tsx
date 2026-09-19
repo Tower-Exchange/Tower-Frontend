@@ -21,6 +21,12 @@ interface RouteOption {
   outputAmount: string;
   routeType: string;
   isFallback?: boolean;
+  quote?: {
+    outputAmount?: string;
+    outputAmountRaw?: string;
+    outputAmountNative?: string;
+    outputTokenDecimals?: number;
+  };
 }
 
 interface RouterDisplayProps {
@@ -82,8 +88,25 @@ const ROUTE_OUTPUT_DISPLAY_DECIMALS: Record<string, number> = {
   QCAD: 2,
 };
 
+const ROUTE_TOKEN_DECIMALS: Record<string, number> = {
+  USDC: 6,
+  EURC: 6,
+  USDT: 18,
+  cirBTC: 8,
+  cNGN: 6,
+  QCAD: 6,
+};
+
 const getRouteOutputDisplayDecimals = (symbol?: string) =>
   symbol ? (ROUTE_OUTPUT_DISPLAY_DECIMALS[symbol] ?? 6) : 6;
+
+const getRouteTokenDecimals = (symbol?: string, quoteDecimals?: number) => {
+  if (typeof quoteDecimals === "number" && quoteDecimals > 0) {
+    return quoteDecimals;
+  }
+
+  return symbol ? (ROUTE_TOKEN_DECIMALS[symbol] ?? 18) : 18;
+};
 
 const normalizeRouterId = (id = "") => {
   const normalizedId = id.toLowerCase();
@@ -102,19 +125,68 @@ const outputAmountToBigInt = (amount?: string) => {
   }
 };
 
-const routeTokenAmountFromOutput = (amount?: string) => {
-  const rawAmount = outputAmountToBigInt(amount);
-
-  if (rawAmount <= 0n) {
+const parsePositiveTokenAmount = (amount?: string, decimals = 18) => {
+  if (!amount || !amount.trim()) {
     return null;
   }
 
-  const tokenAmount = Number.parseFloat(formatUnits(rawAmount, 18));
-  return Number.isFinite(tokenAmount) ? tokenAmount : null;
+  const trimmed = amount.trim();
+  if (trimmed.includes(".")) {
+    const parsed = Number.parseFloat(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  }
+
+  try {
+    const rawAmount = BigInt(trimmed);
+    if (rawAmount <= 0n) {
+      return null;
+    }
+
+    const tokenAmount = Number.parseFloat(formatUnits(rawAmount, decimals));
+    return Number.isFinite(tokenAmount) && tokenAmount > 0 ? tokenAmount : null;
+  } catch {
+    return null;
+  }
 };
 
-const formatRouteTokenAmount = (amount?: string, outputTokenSymbol?: string) => {
-  const tokenAmount = routeTokenAmountFromOutput(amount);
+const getResolvedRouteOutputAmount = (option?: RouteOption | null) =>
+  option?.quote?.outputAmount ||
+  option?.outputAmount ||
+  option?.quote?.outputAmountNative ||
+  option?.quote?.outputAmountRaw ||
+  "";
+
+const routeTokenAmountFromOption = (
+  option?: RouteOption | null,
+  outputTokenSymbol?: string,
+) => {
+  const fromNormalized = parsePositiveTokenAmount(
+    option?.quote?.outputAmount || option?.outputAmount,
+    18,
+  );
+  if (fromNormalized != null && fromNormalized >= 1e-8) {
+    return fromNormalized;
+  }
+
+  const nativeDecimals = getRouteTokenDecimals(
+    outputTokenSymbol,
+    option?.quote?.outputTokenDecimals,
+  );
+  const fromNative = parsePositiveTokenAmount(
+    option?.quote?.outputAmountRaw ||
+      option?.quote?.outputAmountNative ||
+      option?.outputAmount,
+    nativeDecimals,
+  );
+
+  return fromNative ?? fromNormalized;
+};
+
+const formatRouteTokenAmount = (
+  option?: RouteOption | null,
+  outputTokenSymbol?: string,
+) => {
+  const tokenAmount = routeTokenAmountFromOption(option, outputTokenSymbol);
 
   if (tokenAmount === null) {
     return "-";
@@ -126,8 +198,12 @@ const formatRouteTokenAmount = (amount?: string, outputTokenSymbol?: string) => 
   });
 };
 
-const getRouteUsdValue = (amount?: string, outputTokenUsdPrice?: number) => {
-  const tokenAmount = routeTokenAmountFromOutput(amount);
+const getRouteUsdValue = (
+  option?: RouteOption | null,
+  outputTokenUsdPrice?: number,
+  outputTokenSymbol?: string,
+) => {
+  const tokenAmount = routeTokenAmountFromOption(option, outputTokenSymbol);
 
   if (tokenAmount === null) {
     return null;
@@ -201,8 +277,8 @@ export default function RouterDisplay({
 
     if (
       !existingOption ||
-      outputAmountToBigInt(option.outputAmount) >
-        outputAmountToBigInt(existingOption.outputAmount)
+      outputAmountToBigInt(getResolvedRouteOutputAmount(option)) >
+        outputAmountToBigInt(getResolvedRouteOutputAmount(existingOption))
     ) {
       optionsByDexId.set(dexId, option);
     }
@@ -238,7 +314,10 @@ export default function RouterDisplay({
   const allQuotedRoutes = routersToDisplay
     .map(({ router, index }) => {
       const option = routeOptionByDexId.get(router.id) ?? null;
-      const outputAmount = outputAmountToBigInt(option?.outputAmount);
+      const outputAmount = outputAmountToBigInt(
+        getResolvedRouteOutputAmount(option),
+      );
+      const tokenAmount = routeTokenAmountFromOption(option, outputTokenSymbol);
 
       return {
         router: {
@@ -249,7 +328,7 @@ export default function RouterDisplay({
         },
         option,
         outputAmount,
-        hasQuote: outputAmount > 0n,
+        hasQuote: outputAmount > 0n || tokenAmount != null,
         index,
       };
     })
@@ -384,7 +463,7 @@ export default function RouterDisplay({
           const isSelected = isBestPrice;
           const isPendingQuote = !hasQuote && isQuoteSearchPending;
           const routeUsdAmount = hasQuote
-            ? getRouteUsdValue(option?.outputAmount, outputTokenUsdPrice)
+            ? getRouteUsdValue(option, outputTokenUsdPrice, outputTokenSymbol)
             : null;
           const routeUsdValue = formatRouteUsdValue(routeUsdAmount);
           const routeAddedValue = isBestPrice
@@ -438,7 +517,7 @@ export default function RouterDisplay({
                   >
                     {isPendingQuote
                       ? "…"
-                      : formatRouteTokenAmount(option?.outputAmount, outputTokenSymbol)}
+                      : formatRouteTokenAmount(option, outputTokenSymbol)}
                   </span>
                 </span>
                 {routeUsdValue ? (

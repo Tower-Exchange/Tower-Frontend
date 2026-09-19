@@ -1165,10 +1165,21 @@ export async function handleSwapQuotePost(request: NextRequest) {
       });
     }
 
+    const routeOptions = dedupeRouteOptions(backendResult.routeOptions);
+    const requestedRouteOption = normalizedRequestedDexId
+      ? routeOptions.find(
+          (option) =>
+            (normalizeDexId(option.dexId) || option.dexId) ===
+            normalizedRequestedDexId,
+        )
+      : null;
+
     const requestedQuote = normalizedRequestedDexId
       ? candidateQuotes.find(
           (quote) => routeOptionFromQuote(quote).dexId === normalizedRequestedDexId,
-        )
+        ) ||
+        (requestedRouteOption?.quote as BackendQuote | undefined) ||
+        null
       : null;
 
     const bestQuoteCandidate =
@@ -1179,8 +1190,6 @@ export async function handleSwapQuotePost(request: NextRequest) {
           : best,
       );
 
-    const routeOptions = dedupeRouteOptions(backendResult.routeOptions);
-
     console.info("[swap/quote] backend quote summary", {
       quotesFound: candidateQuotes.length,
       routeOptionsFound: routeOptions.length,
@@ -1189,6 +1198,18 @@ export async function handleSwapQuotePost(request: NextRequest) {
     });
 
     if (normalizedRequestedDexId && !requestedQuote) {
+      const requestedOutputAmount = requestedRouteOption?.outputAmount;
+      if (requestedRouteOption && requestedOutputAmount && requestedOutputAmount !== "0") {
+        return NextResponse.json({
+          success: true,
+          data: enrichPublicSwapQuote({
+            ...(requestedRouteOption.quote || bestQuoteCandidate),
+            outputAmount: requestedOutputAmount,
+            routeOptions,
+          }),
+        });
+      }
+
       return NextResponse.json({
         success: false,
         error:

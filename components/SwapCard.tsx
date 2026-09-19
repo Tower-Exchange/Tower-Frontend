@@ -640,6 +640,14 @@ const routeOutputAmountToBigInt = (amount?: string) => {
   }
 };
 
+const getResolvedRouteOutputAmount = (
+  option?: Pick<SwapRouteOption, "outputAmount" | "quote"> | null,
+) =>
+  option?.quote?.outputAmount ||
+  option?.outputAmount ||
+  option?.quote?.outputAmountNative ||
+  "0";
+
 const getRouteOptionCandidates = (
   quoteData: SwapQuote,
   selectedDexId: string,
@@ -654,7 +662,9 @@ const getRouteOptionCandidates = (
       const normalizedDexId = normalizeSwapRouteDexId(option.dexId);
       const fallbackDexId = normalizedDexId === "unknown" ? selectedDexId : normalizedDexId;
       const outputAmount =
-        option.outputAmount || option.quote?.outputAmount || quoteData.outputAmount;
+        option.quote?.outputAmount ||
+        quoteData.outputAmount ||
+        option.outputAmount;
       const dexName =
         option.dexName ||
         option.quote?.route?.hops?.[0]?.dexName ||
@@ -677,7 +687,10 @@ const getRouteOptionCandidates = (
         return false;
       }
 
-      const outputAmount = option.outputAmount || option.quote?.outputAmount || quoteData.outputAmount;
+      const outputAmount =
+        option.quote?.outputAmount ||
+        option.outputAmount ||
+        quoteData.outputAmount;
       return routeOutputAmountToBigInt(outputAmount) > 0n;
     });
 
@@ -715,14 +728,17 @@ const mergeRouteOptionsByDexId = (
     }
 
     const existingOption = optionsByDexId.get(dexId);
-    if (
-      !existingOption ||
-      routeOutputAmountToBigInt(option.outputAmount) >
-        routeOutputAmountToBigInt(existingOption.outputAmount)
-    ) {
+    const optionAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(option),
+    );
+    const existingAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(existingOption),
+    );
+    if (!existingOption || optionAmount > existingAmount) {
       optionsByDexId.set(dexId, {
         ...option,
         dexId,
+        outputAmount: getResolvedRouteOutputAmount(option),
       });
     }
   }
@@ -748,8 +764,12 @@ const getBestRouteOption = (
   );
 
   return options.reduce((bestOption, option) => {
-    const candidateAmount = routeOutputAmountToBigInt(option.outputAmount);
-    const bestAmount = routeOutputAmountToBigInt(bestOption.outputAmount);
+    const candidateAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(option),
+    );
+    const bestAmount = routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(bestOption),
+    );
     const candidateIsFallback = option.isFallback === true;
     const bestIsFallback = bestOption.isFallback === true;
 
@@ -1268,13 +1288,17 @@ const SwapCard = ({
     Boolean(receiveToken) &&
     isRouteSearchPending &&
     !quoteFailureMessage &&
-    routeOutputAmountToBigInt(bestDisplayedRouteOption?.outputAmount) === 0n;
+    routeOutputAmountToBigInt(
+      getResolvedRouteOutputAmount(bestDisplayedRouteOption),
+    ) === 0n;
   const receiveUsdValueLabel = (() => {
     if (!receiveToken) {
       return "$0.00";
     }
 
-    const bestOutputAmount = bestDisplayedRouteOption?.outputAmount;
+    const bestOutputAmount = getResolvedRouteOutputAmount(
+      bestDisplayedRouteOption,
+    );
     if (bestOutputAmount) {
       try {
         const bestOutputTokens = Number.parseFloat(
@@ -1587,7 +1611,8 @@ const SwapCard = ({
             availableRouterIds,
           );
           const displayPrecision = getOutputDisplayDecimals(receiveToken.symbol);
-          const outputAmountForDisplay = bestRouteOption?.outputAmount || "0";
+          const outputAmountForDisplay =
+            getResolvedRouteOutputAmount(bestRouteOption) || "0";
           const quoteAmount = Number.parseFloat(
             formatUnits(BigInt(outputAmountForDisplay || "0"), 18),
           );
@@ -1611,6 +1636,8 @@ const SwapCard = ({
           setReceiveAmount(nextReceiveAmount);
           didCommitQuote = true;
         };
+
+        const incomingByDex: SwapRouteOption[][] = [];
 
         await Promise.allSettled(
           requestedDexIds.map(async (dexId) => {
@@ -1651,6 +1678,7 @@ const SwapCard = ({
               return;
             }
 
+            incomingByDex.push(incomingRouteOptions);
             commitMergedRouteOptions(
               mergeRouteOptionsByDexId(
                 routeOptionsMergeRef.current,
@@ -1659,6 +1687,17 @@ const SwapCard = ({
             );
           }),
         );
+
+        if (activeQuoteKeyRef.current === quoteKey && incomingByDex.length > 0) {
+          commitMergedRouteOptions(
+            incomingByDex.reduce(
+              (merged, incoming) => mergeRouteOptionsByDexId(merged, incoming),
+              shouldPreserveCurrentQuote
+                ? lastSuccessfulRouteOptionsRef.current
+                : [],
+            ),
+          );
+        }
 
         if (activeQuoteKeyRef.current !== quoteKey) {
           return;
