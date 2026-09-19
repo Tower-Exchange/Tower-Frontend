@@ -1,22 +1,22 @@
 "use client";
 import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Plus } from "lucide-react";
+import { motion } from "framer-motion";
+// import { Plus } from "lucide-react";
 // Hidden until recurring orders have a seamless flow.
 // import { RecurringBuys } from "@/components/reusable/RecurringBuys";
 // import { RecurringSell } from "@/components/reusable/RecurringSell";
-import { PortfolioAnalysis } from "@/components/reusable/PortfolioAnalysis";
+// import { PortfolioAnalysis } from "@/components/reusable/PortfolioAnalysis";
 import { AIChat } from "@/components/AIChat";
 import TokenTicker from "@/components/TokenTicker";
 
 const AIAgentPage = () => {
-  const [activeTab, setActiveTab] = useState("portfolio");
-  const [showRightPanel, setShowRightPanel] = useState(false);
+  // Hidden while Portfolio Analysis card is commented out
+  // const [activeTab, setActiveTab] = useState("portfolio");
+  // const [showRightPanel, setShowRightPanel] = useState(false);
+  // const [showRightPanelButton, setShowRightPanelButton] = useState(false);
+  // const [isLargeScreen, setIsLargeScreen] = useState(false);
 
-  // Shows the big plus button in the bottom right for mobile users
-  const [showRightPanelButton, setShowRightPanelButton] = useState(false);
-  const [isLargeScreen, setIsLargeScreen] = useState(false);
-
+  /*
   useEffect(() => {
     const checkScreenSize = () => {
       setIsLargeScreen(window.innerWidth >= 1024);
@@ -33,14 +33,16 @@ const AIAgentPage = () => {
     // { id: "recurring-sell", label: "Recurring Sell" },
     { id: "portfolio", label: "Portfolio Analysis" },
   ];
+  */
 
   return (
-    <div className="relative flex min-h-[calc(100dvh-100px)] flex-col overflow-x-hidden bg-background text-foreground lg:h-full lg:min-h-0">
+    <div className="relative flex min-h-[calc(100dvh-100px)] flex-col overflow-x-hidden bg-background text-foreground flex-1">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_20%_85%,rgba(87,147,255,0.08),transparent_30%),radial-gradient(circle_at_75%_100%,rgba(77,149,235,0.06),transparent_34%)] dark:bg-[radial-gradient(circle_at_20%_85%,rgba(87,147,255,0.12),transparent_30%),radial-gradient(circle_at_75%_100%,rgba(35,57,94,0.16),transparent_34%),linear-gradient(180deg,#07080b_0%,#0a0b0f_45%,#0d1015_100%)]" />
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col">
         <TokenTicker />
 
+        {/* Hidden while Portfolio Analysis card is commented out
         {!showRightPanel && showRightPanelButton && (
           <div className="fixed bottom-[10rem] right-4 z-50 lg:hidden sm:bottom-[17rem] sm:right-6">
             <motion.button
@@ -53,18 +55,23 @@ const AIAgentPage = () => {
             </motion.button>
           </div>
         )}
+        */}
 
-        <div className="mx-auto flex w-full max-w-[1320px] min-h-0 flex-1 flex-col px-3 pb-20 pt-3 sm:px-6 sm:pb-24 sm:pt-4 lg:px-8 lg:pb-8">
-          <div className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_16px_minmax(430px,500px)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_18px_minmax(460px,540px)]">
+        <div className="mx-auto flex w-full max-w-[1320px] h-[calc(100dvh-12rem)] min-h-[650px] flex-col px-3 pb-4 pt-3 sm:px-6 sm:pb-6 sm:pt-4 lg:px-8 lg:pb-6">
+          {/* Originally used 3-column grid when Portfolio Analysis panel was active:
+              className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_16px_minmax(430px,500px)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_18px_minmax(460px,540px)]"
+          */}
+          <div className="flex h-full min-h-0 flex-1 flex-col gap-4 w-full">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5 }}
-              className={`flex h-[calc(100dvh-15.5rem)] min-h-[34rem] flex-col overflow-hidden sm:min-h-[620px] lg:h-full lg:min-h-0 ${showRightPanel ? "hidden lg:flex" : "flex"}`}
+              className="flex h-full min-h-0 flex-col overflow-hidden flex-1 w-full"
             >
               <AIChat />
             </motion.div>
 
+            {/* Portfolio Analysis Card & Divider (Hidden)
             <div className="relative hidden lg:flex items-center justify-center">
               <div className="h-[64%] w-px rounded-full bg-gradient-to-b from-transparent via-border to-transparent" />
               <div className="absolute h-20 w-1.5 rounded-full bg-muted-foreground/40" />
@@ -132,13 +139,13 @@ const AIAgentPage = () => {
                     <div className="mx-auto w-full max-w-[430px] xl:max-w-[470px]">
                       <AnimatePresence mode="wait">
                         {/* Hidden until recurring orders have a seamless flow.
-                        {activeTab === "recurring-buys" && (
+                        activeTab === "recurring-buys" && (
                           <RecurringBuys key="buys" />
-                        )}
-                        {activeTab === "recurring-sell" && (
+                        )
+                        activeTab === "recurring-sell" && (
                           <RecurringSell key="sell" />
-                        )}
-                        */}
+                        )
+                        * /}
                         {activeTab === "portfolio" && (
                           <PortfolioAnalysis key="portfolio" />
                         )}
@@ -148,6 +155,7 @@ const AIAgentPage = () => {
                 </motion.div>
               )}
             </AnimatePresence>
+            */}
           </div>
         </div>
       </div>
