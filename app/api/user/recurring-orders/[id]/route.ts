@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/server/devApiSupabase";
 import { walletError } from "@/lib/server/wallet";
-import { requireWalletSession } from "@/lib/server/walletSession";
+import { requireOwnedWalletSession } from "@/lib/server/walletSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ const ALLOWED_UPDATE_KEYS = new Set([
   "end_date",
   "next_execution_date",
 ]);
+const IDENTITY_KEYS = new Set(["wallet_address", "walletAddress", "wallet"]);
 
 type RouteContext = {
   params: Promise<{ id: string }> | { id: string };
@@ -26,7 +27,7 @@ async function resolveId(context: RouteContext) {
 
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
-    const { wallet, response } = requireWalletSession(request);
+    const { wallet, response } = requireOwnedWalletSession(request);
     if (response || !wallet) {
       return response ?? walletError("Wallet session required.", 401);
     }
@@ -60,22 +61,25 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const id = await resolveId(context);
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const updates: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(body)) {
-      if (ALLOWED_UPDATE_KEYS.has(key)) {
-        updates[key] = value;
+      if (IDENTITY_KEYS.has(key)) {
+        continue;
       }
+      if (!ALLOWED_UPDATE_KEYS.has(key)) {
+        return walletError(`Field not allowed: ${key}`);
+      }
+      updates[key] = value;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -110,7 +114,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
-    const { wallet, response } = requireWalletSession(request);
+    const { wallet, response } = requireOwnedWalletSession(request);
     if (response || !wallet) {
       return response ?? walletError("Wallet session required.", 401);
     }

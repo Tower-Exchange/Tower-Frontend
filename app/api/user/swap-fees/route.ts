@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/server/devApiSupabase";
 import { walletError } from "@/lib/server/wallet";
-import { requireWalletSession } from "@/lib/server/walletSession";
+import { requireOwnedWalletSession } from "@/lib/server/walletSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
+    const { wallet, response } = requireOwnedWalletSession(request);
     if (response || !wallet) {
       return response ?? walletError("Wallet session required.", 401);
     }
@@ -42,15 +42,14 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const row = {
       wallet_address: wallet,
@@ -107,15 +106,14 @@ export async function POST(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const feeId = typeof body.feeId === "string" ? body.feeId : null;
     const transactionHash =
@@ -153,6 +151,54 @@ export async function PATCH(request: NextRequest) {
     console.error("PATCH /api/user/swap-fees failed:", error);
     return walletError(
       error instanceof Error ? error.message : "Failed to update swap fee",
+      500,
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
+
+    const id =
+      request.nextUrl.searchParams.get("id") ||
+      (typeof body.id === "string"
+        ? body.id
+        : typeof body.feeId === "string"
+          ? body.feeId
+          : null);
+    if (!id) {
+      return walletError("id is required.");
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("swap_fees")
+      .delete()
+      .eq("id", id)
+      .eq("wallet_address", wallet)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      return walletError("Swap fee not found for wallet.", 404);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/user/swap-fees failed:", error);
+    return walletError(
+      error instanceof Error ? error.message : "Failed to delete swap fee",
       500,
     );
   }

@@ -30,6 +30,7 @@ interface RouterDisplayProps {
   outputTokenUsdPrice?: number;
   outputTokenSymbol?: string;
   availableRouterIds?: string[];
+  isQuoteSearchPending?: boolean;
 }
 
 type SupportedRouter = {
@@ -173,6 +174,7 @@ export default function RouterDisplay({
   outputTokenUsdPrice,
   outputTokenSymbol,
   availableRouterIds = [],
+  isQuoteSearchPending = false,
 }: RouterDisplayProps) {
   const routesDetailsRef = useRef<HTMLDetailsElement | null>(null);
 
@@ -251,8 +253,18 @@ export default function RouterDisplay({
         index,
       };
     })
-    .filter((route) => route.option !== null && route.hasQuote)
+    .filter((route) => {
+      if (availableRouterIdSet.size > 0) {
+        return availableRouterIdSet.has(route.router.id);
+      }
+
+      return route.option !== null && route.hasQuote;
+    })
     .sort((leftRoute, rightRoute) => {
+      if (leftRoute.hasQuote !== rightRoute.hasQuote) {
+        return leftRoute.hasQuote ? -1 : 1;
+      }
+
       if (leftRoute.outputAmount !== rightRoute.outputAmount) {
         return leftRoute.outputAmount > rightRoute.outputAmount ? -1 : 1;
       }
@@ -278,9 +290,10 @@ export default function RouterDisplay({
     return null;
   }
 
-  const displayedRoutes = allQuotedRoutes.slice(0, 3);
-  const bestQuotedRoute = allQuotedRoutes[0];
-  const bestPriceRouterId = bestQuotedRoute.router.id;
+  const displayedRoutes =
+    availableRouterIdSet.size > 0 ? allQuotedRoutes : allQuotedRoutes.slice(0, 3);
+  const bestQuotedRoute = displayedRoutes.find((route) => route.hasQuote) ?? null;
+  const bestPriceRouterId = bestQuotedRoute?.router.id;
   const dexCount = allQuotedRoutes.length;
   const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
   const otherDexNames = allQuotedRoutes.slice(1).map(({ router }) => router.name);
@@ -367,8 +380,9 @@ export default function RouterDisplay({
 
       <div className="space-y-1 p-1.5">
         {displayedRoutes.map(({ router, option, hasQuote }) => {
-          const isBestPrice = router.id === bestPriceRouterId;
+          const isBestPrice = Boolean(bestPriceRouterId) && router.id === bestPriceRouterId;
           const isSelected = isBestPrice;
+          const isPendingQuote = !hasQuote && isQuoteSearchPending;
           const routeUsdAmount = hasQuote
             ? getRouteUsdValue(option?.outputAmount, outputTokenUsdPrice)
             : null;
@@ -417,10 +431,14 @@ export default function RouterDisplay({
                   ) : null}
                   <span
                     className={`text-sm tabular-nums ${
-                      hasQuote ? "text-foreground" : "text-muted-foreground/80"
-                    }`}
+                      hasQuote
+                        ? "text-foreground"
+                        : "text-muted-foreground/80"
+                    } ${isPendingQuote ? "animate-pulse" : ""}`}
                   >
-                    {formatRouteTokenAmount(option?.outputAmount, outputTokenSymbol)}
+                    {isPendingQuote
+                      ? "…"
+                      : formatRouteTokenAmount(option?.outputAmount, outputTokenSymbol)}
                   </span>
                 </span>
                 {routeUsdValue ? (

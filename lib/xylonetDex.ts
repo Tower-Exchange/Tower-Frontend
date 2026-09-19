@@ -496,6 +496,7 @@ type CachedXylonetQuote = {
 };
 
 const xylonetQuoteCache = new Map<string, CachedXylonetQuote>();
+const xylonetQuoteInflight = new Map<string, Promise<XylonetQuote | null>>();
 
 const getQuoteCacheKey = (params: {
   srcToken: string;
@@ -790,31 +791,6 @@ export async function getXylonetQuote(params: {
 
   const srcToken = getAddress(params.inputToken);
   const destToken = getAddress(params.outputToken);
-  const srcDecimals = getTokenDecimalsByAddress(srcToken);
-  const destDecimals = getTokenDecimalsByAddress(destToken);
-  const adapterAddress = getXylonetAdapterAddress();
-  const executorAddress = getXylonetExecutorAddress();
-  const canCollectExecutorFee =
-    Boolean(adapterAddress && executorAddress) &&
-    !isNativeSentinelToken(srcToken) &&
-    !isNativeSentinelToken(destToken);
-  const feeState = canCollectExecutorFee
-    ? await getXylonetExecutorFeeState(executorAddress)
-    : {
-        enabled: false,
-        feeBps: LIFI_SWAP_FEE_BPS,
-        treasury: LIFI_SWAP_FEE_RECIPIENT,
-      };
-  const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
-  const platformFeeAmountNative = shouldCollectExecutorFee
-    ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR
-    : 0n;
-  const swapInputAmountNative = amountIn - platformFeeAmountNative;
-
-  if (swapInputAmountNative <= 0n) {
-    return null;
-  }
-
   const cacheKey = getQuoteCacheKey({
     srcToken,
     destToken,
@@ -826,59 +802,112 @@ export async function getXylonetQuote(params: {
     return freshCachedQuote;
   }
 
-  try {
-    const quoteAccount = shouldCollectExecutorFee
-      ? (adapterAddress as Address)
-      : getQuoteAccount(params.account);
-    const lifiQuote = await withTimeout(
-      fetchLifiQuote({
-        srcToken,
-        destToken,
-        amount: swapInputAmountNative.toString(),
-        slippageBps: params.slippageBps,
-        fromAddress: quoteAccount,
-        toAddress: shouldCollectExecutorFee ? executorAddress : quoteAccount,
-        skipSimulation: true,
-      }),
-      QUOTE_TIMEOUT_MS,
-      `XyloNet quote timed out after ${QUOTE_TIMEOUT_MS}ms`,
-    );
-    const mappedQuote = mapLifiQuote({
-      srcToken,
-      destToken,
-      amountIn,
-      swapInputAmountNative,
-      srcDecimals,
-      destDecimals,
-      slippageBps: params.slippageBps,
-      lifiQuote,
-      shouldCollectExecutorFee,
-      feeBps: feeState.feeBps,
-      treasury: feeState.treasury,
-      platformFeeAmountNative,
-    });
-    if (!mappedQuote) {
-      return null;
-    }
+  const staleCachedQuote = readCachedQuote(cacheKey, QUOTE_CACHE_HARD_TTL_MS);
 
-    xylonetQuoteCache.set(cacheKey, {
-      quote: mappedQuote,
-      fetchedAt: Date.now(),
-    });
-    return mappedQuote;
-  } catch (error) {
-    const staleCachedQuote = readCachedQuote(cacheKey, QUOTE_CACHE_HARD_TTL_MS);
-    if (staleCachedQuote) {
-      console.warn(
-        "[XyloNet] quote unavailable, reusing cached route:",
-        readErrorMessage(error),
-      );
+  const loadFreshXylonetQuote = async (): Promise<XylonetQuote | null> => {
+    const srcDecimals = getTokenDecimalsByAddress(srcToken);
+    const destDecimals = getTokenDecimalsByAddress(destToken);
+    const adapterAddress = getXylonetAdapterAddress();
+    const executorAddress = getXylonetExecutorAddress();
+    const canCollectExecutorFee =
+      Boolean(adapterAddress && executorAddress) &&
+      !isNativeSentinelToken(srcToken) &&
+      !isNativeSentinelToken(destToken);
+    const feeState = canCollectExecutorFee
+      ? await getXylonetExecutorFeeState(executorAddress)
+      : {
+          enabled: false,
+          feeBps: LIFI_SWAP_FEE_BPS,
+          treasury: LIFI_SWAP_FEE_RECIPIENT,
+        };
+    const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
+    const platformFeeAmountNative = shouldCollectExecutorFee
+      ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR
+      : 0n;
+    const swapInputAmountNative = amountIn - platformFeeAmountNative;
+
+    if (swapInputAmountNative <= 0n) {
       return staleCachedQuote;
     }
 
-    console.warn("[XyloNet] quote unavailable:", readErrorMessage(error));
-    return null;
+    try {
+      const quoteAccount = shouldCollectExecutorFee
+        ? (adapterAddress as Address)
+        : getQuoteAccount(params.account);
+      const lifiQuote = await withTimeout(
+        fetchLifiQuote({
+          srcToken,
+          destToken,
+          amount: swapInputAmountNative.toString(),
+          slippageBps: params.slippageBps,
+          fromAddress: quoteAccount,
+          toAddress: shouldCollectExecutorFee ? executorAddress : quoteAccount,
+          skipSimulation: true,
+        }),
+        QUOTE_TIMEOUT_MS,
+        `XyloNet quote timed out after ${QUOTE_TIMEOUT_MS}ms`,
+      );
+      const mappedQuote = mapLifiQuote({
+        srcToken,
+        destToken,
+        amountIn,
+        swapInputAmountNative,
+        srcDecimals,
+        destDecimals,
+        slippageBps: params.slippageBps,
+        lifiQuote,
+        shouldCollectExecutorFee,
+        feeBps: feeState.feeBps,
+        treasury: feeState.treasury,
+        platformFeeAmountNative,
+      });
+      if (!mappedQuote) {
+        return staleCachedQuote;
+      }
+
+      xylonetQuoteCache.set(cacheKey, {
+        quote: mappedQuote,
+        fetchedAt: Date.now(),
+      });
+      return mappedQuote;
+    } catch (error) {
+      if (staleCachedQuote) {
+        console.warn(
+          "[XyloNet] quote unavailable, reusing cached route:",
+          readErrorMessage(error),
+        );
+        return staleCachedQuote;
+      }
+
+      console.warn("[XyloNet] quote unavailable:", readErrorMessage(error));
+      return null;
+    }
+  };
+
+  const inflightQuote = xylonetQuoteInflight.get(cacheKey);
+  if (staleCachedQuote) {
+    if (!inflightQuote) {
+      const refresh = loadFreshXylonetQuote().finally(() => {
+        if (xylonetQuoteInflight.get(cacheKey) === refresh) {
+          xylonetQuoteInflight.delete(cacheKey);
+        }
+      });
+      xylonetQuoteInflight.set(cacheKey, refresh);
+    }
+    return staleCachedQuote;
   }
+
+  if (inflightQuote) {
+    return inflightQuote;
+  }
+
+  const refresh = loadFreshXylonetQuote().finally(() => {
+    if (xylonetQuoteInflight.get(cacheKey) === refresh) {
+      xylonetQuoteInflight.delete(cacheKey);
+    }
+  });
+  xylonetQuoteInflight.set(cacheKey, refresh);
+  return refresh;
 }
 
 export async function buildXylonetSwapTransaction(params: {

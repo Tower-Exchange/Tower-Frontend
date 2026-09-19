@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/server/devApiSupabase";
 import { walletError } from "@/lib/server/wallet";
-import { requireWalletSession } from "@/lib/server/walletSession";
+import { requireOwnedWalletSession } from "@/lib/server/walletSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,16 +21,15 @@ async function resolveId(context: RouteContext) {
  */
 export async function POST(request: NextRequest, context: RouteContext) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const id = await resolveId(context);
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const authorizationHash =
       typeof body.authorization_transaction_hash === "string"

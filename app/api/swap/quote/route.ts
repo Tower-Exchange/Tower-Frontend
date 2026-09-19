@@ -1158,10 +1158,11 @@ export async function handleSwapQuotePost(request: NextRequest) {
     }
 
     if (candidateQuotes.length === 0) {
-      return NextResponse.json(
-        { success: false, error: "No valid route found" },
-        { status: 404 },
-      );
+      return NextResponse.json({
+        success: false,
+        error: "No valid route found",
+        data: { routeOptions: [] },
+      });
     }
 
     const requestedQuote = normalizedRequestedDexId
@@ -1188,17 +1189,14 @@ export async function handleSwapQuotePost(request: NextRequest) {
     });
 
     if (normalizedRequestedDexId && !requestedQuote) {
-      return NextResponse.json(
-        {
-          success: false,
-          error:
-            normalizedRequestedDexId === TOWER_DEX_ID
-              ? "Tower route is temporarily unavailable. Wait a few seconds and try again."
-              : `No valid ${normalizedRequestedDexId} route found for this swap`,
-          data: { routeOptions },
-        },
-        { status: 404 },
-      );
+      return NextResponse.json({
+        success: false,
+        error:
+          normalizedRequestedDexId === TOWER_DEX_ID
+            ? "Tower route is temporarily unavailable. Wait a few seconds and try again."
+            : `No valid ${normalizedRequestedDexId} route found for this swap`,
+        data: { routeOptions },
+      });
     }
 
     const bestRouteOption = routeOptions.reduce<RouteOption | null>(

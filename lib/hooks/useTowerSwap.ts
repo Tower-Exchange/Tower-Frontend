@@ -172,6 +172,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           headers: {
             'Content-Type': 'application/json',
           },
+          cache: 'no-store',
           body: JSON.stringify({
             inputToken,
             outputToken,
@@ -182,29 +183,39 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           }),
         });
 
-        if (!response.ok) {
-          let errorMessage = `Failed to get quote: ${response.statusText}`;
+        const responseData = await response.json().catch(() => null);
+        const quote: SwapQuote | null =
+          responseData?.data && typeof responseData.data === 'object'
+            ? responseData.data
+            : responseData;
 
-          try {
-            const errorData = await response.json();
-            errorMessage = errorData.error || errorMessage;
-          } catch {
-            const errorText = await response.text().catch(() => '');
-            if (errorText) {
-              errorMessage = errorText;
-            }
-          }
-
-          throw new Error(errorMessage);
+        if (response.status === 404 || responseData?.success === false) {
+          console.debug('[useTowerSwap] quote unavailable', {
+            inputToken,
+            outputToken,
+            inputAmount,
+            dexId,
+            status: response.status,
+            error: responseData?.error,
+          });
+          return null;
         }
 
-        const responseData = await response.json();
-        // Backend wraps response in {success, data, timestamp}
-        const quote: SwapQuote = responseData.data || responseData;
+        if (!response.ok) {
+          throw new Error(
+            responseData?.error || `Failed to get quote: ${response.statusText}`,
+          );
+        }
+
+        if (!quote?.outputAmount) {
+          return null;
+        }
+
         console.debug('[useTowerSwap] quote response received', {
           inputToken,
           outputToken,
           inputAmount,
+          dexId,
           outputAmount: quote.outputAmount,
           routeOptionsCount: quote.routeOptions?.length ?? 0,
         });

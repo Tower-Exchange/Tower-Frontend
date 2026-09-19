@@ -1,22 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/server/devApiSupabase";
 import { walletError } from "@/lib/server/wallet";
-import { requireWalletSession } from "@/lib/server/walletSession";
+import { requireOwnedWalletSession } from "@/lib/server/walletSession";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
-    const { wallet, response } = requireWalletSession(request);
-    if (response || !wallet) {
-      return response ?? walletError("Wallet session required.", 401);
-    }
-
     const body = (await request.json().catch(() => ({}))) as Record<
       string,
       unknown
     >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
 
     const row = {
       wallet_address: wallet,
@@ -88,6 +87,50 @@ export async function POST(request: NextRequest) {
     console.error("POST /api/user/bridge-fees failed:", error);
     return walletError(
       error instanceof Error ? error.message : "Failed to register bridge fee",
+      500,
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as Record<
+      string,
+      unknown
+    >;
+    const { wallet, response } = requireOwnedWalletSession(request, body);
+    if (response || !wallet) {
+      return response ?? walletError("Wallet session required.", 401);
+    }
+
+    const id =
+      request.nextUrl.searchParams.get("id") ||
+      (typeof body.id === "string" ? body.id : null);
+    if (!id) {
+      return walletError("id is required.");
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("bridge_fees")
+      .delete()
+      .eq("id", id)
+      .eq("wallet_address", wallet)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data) {
+      return walletError("Bridge fee not found for wallet.", 404);
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/user/bridge-fees failed:", error);
+    return walletError(
+      error instanceof Error ? error.message : "Failed to delete bridge fee",
       500,
     );
   }
