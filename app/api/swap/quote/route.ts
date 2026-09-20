@@ -38,6 +38,9 @@ import {
   type XylonetQuote,
 } from "@/lib/xylonetDex";
 
+export const runtime = "nodejs";
+export const maxDuration = 30;
+
 type BackendQuote = {
   inputToken: string;
   outputToken: string;

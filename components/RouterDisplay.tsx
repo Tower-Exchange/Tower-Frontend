@@ -528,14 +528,17 @@ export default function RouterDisplay({
                     </span>
                   ) : null}
                   <span
-                    className={`text-sm tabular-nums ${
+                    className={`tabular-nums ${
                       hasQuote
                         ? "text-foreground"
                         : "text-muted-foreground/80"
-                    } ${isPendingQuote ? "animate-pulse" : ""}`}
+                    } ${isPendingQuote ? "animate-pulse" : ""} ${
+                      isPendingQuote ? "text-xl leading-none" : "text-sm"
+                    }`}
+                    aria-label={isPendingQuote ? "Loading quote" : undefined}
                   >
                     {isPendingQuote
-                      ? "…"
+                      ? "···"
                       : formatRouteTokenAmount(option, outputTokenSymbol)}
                   </span>
                 </span>

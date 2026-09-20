@@ -49,10 +49,16 @@ const NORMALIZED_DECIMALS = 18;
 const BPS_DENOMINATOR = 10_000n;
 const DEFAULT_TOWER_SWAP_FEE_BPS = 30;
 const EXECUTOR_FEE_STATE_TTL_MS = 30_000;
-const DZAP_QUOTE_TIMEOUT_MS = 8_000;
+const DZAP_QUOTE_TIMEOUT_MS = 12_000;
 const DZAP_BUILD_TIMEOUT_MS = 20_000;
 const DZAP_QUOTE_CACHE_SOFT_TTL_MS = 12_000;
 const DZAP_QUOTE_CACHE_HARD_TTL_MS = 120_000;
+const DZAP_FEE_STATE_TIMEOUT_MS = 800;
+const DZAP_TRADE_QUOTES_URL = `${(
+  process.env.DZAP_API_URL ||
+  process.env.NEXT_PUBLIC_DZAP_API_URL ||
+  "https://api.dzap.io"
+).replace(/\/$/, "")}/v1/quotes`;
 
 const DZAP_SWAP_EXECUTOR_MAINNET_DEFAULT =
   "0xeB8940752Fa12944d3b2D736d51fA36E4dA32BC8" as Address;
@@ -346,6 +352,38 @@ const withTimeout = async <T,>(
   }
 };
 
+const fetchDzapTradeQuotes = async (body: Record<string, unknown>) => {
+  const apiKey = process.env.DZAP_API_KEY?.trim();
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "Content-Type": "application/json",
+    "User-Agent": "TowerExchange/1.0 (+https://tower.exchange)",
+  };
+
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+    headers["x-api-key"] = apiKey;
+  }
+
+  const response = await fetch(DZAP_TRADE_QUOTES_URL, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const message =
+      (isRecord(payload) &&
+        (asString(payload.message) || asString(payload.error))) ||
+      `DZap quotes HTTP ${response.status}`;
+    throw new Error(message);
+  }
+
+  return unwrapTradeQuotes(payload);
+};
+
 const createDzapPublicClient = (chainId: number) => {
   const urls =
     chainId === DZAP_ARC_MAINNET_CHAIN_ID
@@ -515,32 +553,85 @@ async function getDzapExecutorFeeState(
   }
 }
 
+const unwrapTradeQuotes = (payload: unknown): TradeQuotesResponse => {
+  if (!isRecord(payload)) {
+    return {} as TradeQuotesResponse;
+  }
+
+  if (isRecord(payload.data) && !isRecord(payload.quoteRates)) {
+    return payload.data as TradeQuotesResponse;
+  }
+
+  return payload as TradeQuotesResponse;
+};
+
 const pickTradeQuote = (quotes: TradeQuotesResponse) => {
-  const pairKey = Object.keys(quotes)[0];
-  if (!pairKey) {
-    return null;
+  const pairs = Object.entries(unwrapTradeQuotes(quotes)).filter(
+    (entry): entry is [string, NonNullable<TradeQuotesResponse[string]>] => {
+      const [, pair] = entry;
+      return isRecord(pair) && isRecord(pair.quoteRates);
+    },
+  );
+
+  let best: {
+    pairKey: string;
+    protocol: string;
+    bestReturnSource?: string;
+    quote: NonNullable<
+      NonNullable<TradeQuotesResponse[string]>["quoteRates"]
+    >[string];
+    destAmount: bigint;
+  } | null = null;
+
+  for (const [pairKey, pair] of pairs) {
+    const quoteRates = pair.quoteRates || {};
+    const preferredProtocols = [
+      pair.recommendedSource,
+      pair.bestReturnSource,
+      ...Object.keys(quoteRates),
+    ].filter((protocol): protocol is string => Boolean(protocol));
+
+    for (const protocol of preferredProtocols) {
+      const quote = quoteRates[protocol];
+      if (!quote) {
+        continue;
+      }
+
+      let destAmount = 0n;
+      try {
+        destAmount = BigInt(quote.destAmount || "0");
+      } catch {
+        destAmount = 0n;
+      }
+      if (destAmount <= 0n) {
+        continue;
+      }
+
+      if (!best || destAmount > best.destAmount) {
+        best = {
+          pairKey,
+          protocol,
+          bestReturnSource: pair.bestReturnSource,
+          quote,
+          destAmount,
+        };
+      }
+
+      if (protocol === pair.recommendedSource || protocol === pair.bestReturnSource) {
+        break;
+      }
+    }
   }
 
-  const pair = quotes[pairKey];
-  if (!pair) {
-    return null;
-  }
-
-  const protocol = pair.recommendedSource || pair.bestReturnSource;
-  if (!protocol) {
-    return null;
-  }
-
-  const quote = pair.quoteRates?.[protocol];
-  if (!quote || BigInt(quote.destAmount || "0") <= 0n) {
+  if (!best) {
     return null;
   }
 
   return {
-    pairKey,
-    protocol,
-    bestReturnSource: pair.bestReturnSource,
-    quote,
+    pairKey: best.pairKey,
+    protocol: best.protocol,
+    bestReturnSource: best.bestReturnSource,
+    quote: best.quote,
   };
 };
 
@@ -664,13 +755,18 @@ export async function getDzapQuote(params: {
       Boolean(adapterAddress && executorAddress) &&
       !isNativeSentinelToken(srcToken) &&
       !isNativeSentinelToken(destToken);
+    const disabledFeeState = {
+      enabled: false,
+      feeBps: DZAP_SWAP_FEE_BPS,
+      treasury: DZAP_SWAP_FEE_RECIPIENT,
+    };
     const feeState = canCollectExecutorFee
-      ? await getDzapExecutorFeeState(params.chainId, executorAddress as Address)
-      : {
-          enabled: false,
-          feeBps: DZAP_SWAP_FEE_BPS,
-          treasury: DZAP_SWAP_FEE_RECIPIENT,
-        };
+      ? await withTimeout(
+          getDzapExecutorFeeState(params.chainId, executorAddress as Address),
+          DZAP_FEE_STATE_TIMEOUT_MS,
+          "DZap executor fee state timed out",
+        ).catch(() => disabledFeeState)
+      : disabledFeeState;
     const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
     const platformFeeAmountNative = shouldCollectExecutorFee
       ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR
@@ -681,17 +777,24 @@ export async function getDzapQuote(params: {
       return null;
     }
 
+    const quoteAccount =
+      params.account &&
+      isAddress(params.account) &&
+      (!adapterAddress ||
+        params.account.toLowerCase() !== adapterAddress.toLowerCase())
+        ? getAddress(params.account)
+        : undefined;
+
     try {
-      const client = getDzapClient();
       const quotes = await withTimeout(
-        client.getTradeQuotes({
+        fetchDzapTradeQuotes({
           fromChain: params.chainId,
-          account: params.account || adapterAddress || undefined,
+          ...(quoteAccount ? { account: quoteAccount } : {}),
           filter: QuoteFilters.best,
           disableEstimation: true,
           timingStrategy: {
             minWaitTimeMs: 400,
-            maxWaitTimeMs: 3_500,
+            maxWaitTimeMs: 5_000,
             preferredResultCount: 1,
             relaxMinSuccessOnDelay: true,
           },
@@ -713,14 +816,15 @@ export async function getDzapQuote(params: {
 
       const selected = pickTradeQuote(quotes);
       if (!selected) {
-        return staleCachedQuote;
+        console.warn("[DZap] quote unavailable: no usable route in response");
+        return staleCachedQuote ?? null;
       }
 
       const quote = selected.quote;
       const amountOut = BigInt(quote.destAmount);
       const minOut = BigInt(quote.minDestAmount || "0");
       const priceImpact = parsePriceImpactBps(quote.priceImpactPercent);
-      const routerAddress = await getRouterAddress(client, params.chainId);
+      const routerAddress = getAddress(DZAP_ARC_ROUTER_ADDRESS);
       const pathSteps = quote.path ?? [];
       const hops =
         pathSteps.length > 0
@@ -812,7 +916,9 @@ export async function getDzapQuote(params: {
         return staleCachedQuote;
       }
 
-      console.warn("[DZap] quote unavailable:", message);
+      console.warn("[DZap] quote unavailable:", message, {
+        hasApiKey: Boolean(process.env.DZAP_API_KEY?.trim()),
+      });
       return null;
     }
   };
