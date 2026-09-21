@@ -1,5 +1,4 @@
 import {
-  QuoteFilters,
   Services,
   type EvmTxData,
   type HexString,
@@ -49,10 +48,13 @@ const NORMALIZED_DECIMALS = 18;
 const BPS_DENOMINATOR = 10_000n;
 const DEFAULT_TOWER_SWAP_FEE_BPS = 30;
 const EXECUTOR_FEE_STATE_TTL_MS = 30_000;
-const DZAP_QUOTE_TIMEOUT_MS = 12_000;
+const DZAP_QUOTE_TIMEOUT_MS = 8_000;
 const DZAP_BUILD_TIMEOUT_MS = 20_000;
-const DZAP_QUOTE_CACHE_SOFT_TTL_MS = 12_000;
+const DZAP_QUOTE_CACHE_SOFT_TTL_MS = 30_000;
 const DZAP_QUOTE_CACHE_HARD_TTL_MS = 120_000;
+const DZAP_MIN_REFRESH_INTERVAL_MS = 30_000;
+const DZAP_MAX_CONCURRENT_QUOTES = 2;
+const DZAP_RATE_LIMIT_COOLDOWN_MS = 30_000;
 const DZAP_FEE_STATE_TIMEOUT_MS = 800;
 const DZAP_TRADE_QUOTES_URL = `${(
   process.env.DZAP_API_URL ||
@@ -313,6 +315,72 @@ type DzapQuoteCacheEntry = {
 const dzapQuoteCache = new Map<string, DzapQuoteCacheEntry>();
 const dzapQuoteInflight = new Map<string, Promise<DzapQuote | null>>();
 
+let dzapRateLimitedUntil = 0;
+let dzapConcurrentQuotes = 0;
+let lastDzapRateLimitLogAt = 0;
+
+const clampMs = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const isDzapRateLimited = () => Date.now() < dzapRateLimitedUntil;
+
+const markDzapRateLimited = (cooldownMs: number, reason: string) => {
+  const until = Date.now() + cooldownMs;
+  if (until > dzapRateLimitedUntil) {
+    dzapRateLimitedUntil = until;
+  }
+
+  if (Date.now() - lastDzapRateLimitLogAt > 5_000) {
+    lastDzapRateLimitLogAt = Date.now();
+    console.warn("[DZap] pausing quotes:", reason, {
+      cooldownMs,
+    });
+  }
+};
+
+const parseRetryAfterMs = (response: Response, payload: unknown) => {
+  const header = response.headers.get("retry-after");
+  if (header) {
+    const asSeconds = Number.parseFloat(header);
+    if (Number.isFinite(asSeconds) && asSeconds >= 0) {
+      return clampMs(Math.ceil(asSeconds * 1000), 1_000, 120_000);
+    }
+
+    const asDate = Date.parse(header);
+    if (Number.isFinite(asDate)) {
+      return clampMs(asDate - Date.now(), 1_000, 120_000);
+    }
+  }
+
+  if (isRecord(payload)) {
+    const retryAfter = payload.retryAfter;
+    if (typeof retryAfter === "number" && Number.isFinite(retryAfter)) {
+      return clampMs(
+        retryAfter > 1_000 ? retryAfter : retryAfter * 1000,
+        1_000,
+        120_000,
+      );
+    }
+    if (typeof retryAfter === "string") {
+      const parsed = Number.parseFloat(retryAfter);
+      if (Number.isFinite(parsed)) {
+        return clampMs(parsed > 1_000 ? parsed : parsed * 1000, 1_000, 120_000);
+      }
+    }
+  }
+
+  const resetAt = Number.parseInt(
+    response.headers.get("x-ratelimit-reset") || "",
+    10,
+  );
+  if (Number.isFinite(resetAt) && resetAt > 0) {
+    const resetMs = resetAt > 1_000_000_000_000 ? resetAt : resetAt * 1000;
+    return clampMs(resetMs - Date.now(), 1_000, 120_000);
+  }
+
+  return DZAP_RATE_LIMIT_COOLDOWN_MS;
+};
+
 const getDzapQuoteCacheKey = (params: {
   chainId: number;
   srcToken: string;
@@ -321,19 +389,6 @@ const getDzapQuoteCacheKey = (params: {
   slippageBps: number;
 }) =>
   `${params.chainId}:${params.srcToken.toLowerCase()}:${params.destToken.toLowerCase()}:${params.amount}:${params.slippageBps}`;
-
-const readCachedDzapQuote = (cacheKey: string, maxAgeMs: number) => {
-  const cached = dzapQuoteCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (Date.now() - cached.fetchedAt > maxAgeMs) {
-    return null;
-  }
-
-  return cached.quote;
-};
 
 const withTimeout = async <T,>(
   promise: Promise<T>,
@@ -356,6 +411,10 @@ const withTimeout = async <T,>(
 };
 
 const fetchDzapTradeQuotes = async (body: Record<string, unknown>) => {
+  if (isDzapRateLimited()) {
+    throw new Error("Rate limit exceeded");
+  }
+
   const apiKey = process.env.DZAP_API_KEY?.trim();
   const headers: Record<string, string> = {
     Accept: "application/json",
@@ -365,26 +424,49 @@ const fetchDzapTradeQuotes = async (body: Record<string, unknown>) => {
 
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
-    headers["x-api-key"] = apiKey;
   }
 
-  const response = await fetch(DZAP_TRADE_QUOTES_URL, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const payload = await response.json().catch(() => null);
+  dzapConcurrentQuotes += 1;
+  try {
+    const response = await fetch(DZAP_TRADE_QUOTES_URL, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const payload = await response.json().catch(() => null);
+    const remaining = Number.parseInt(
+      response.headers.get("x-ratelimit-remaining") || "",
+      10,
+    );
+    if (remaining === 0) {
+      markDzapRateLimited(
+        parseRetryAfterMs(response, payload),
+        "X-RateLimit-Remaining exhausted",
+      );
+    }
 
-  if (!response.ok) {
-    const message =
-      (isRecord(payload) &&
-        (asString(payload.message) || asString(payload.error))) ||
-      `DZap quotes HTTP ${response.status}`;
-    throw new Error(message);
+    if (response.status === 429 || (isRecord(payload) && payload.code === "RATE_LIMITED")) {
+      markDzapRateLimited(parseRetryAfterMs(response, payload), "HTTP 429");
+      const message =
+        (isRecord(payload) &&
+          (asString(payload.message) || asString(payload.error))) ||
+        "Rate limit exceeded";
+      throw new Error(message);
+    }
+
+    if (!response.ok) {
+      const message =
+        (isRecord(payload) &&
+          (asString(payload.message) || asString(payload.error))) ||
+        `DZap quotes HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return unwrapTradeQuotes(payload);
+  } finally {
+    dzapConcurrentQuotes = Math.max(0, dzapConcurrentQuotes - 1);
   }
-
-  return unwrapTradeQuotes(payload);
 };
 
 const createDzapPublicClient = (chainId: number) => {
@@ -735,18 +817,18 @@ export async function getDzapQuote(params: {
     amount: amountIn.toString(),
     slippageBps: params.slippageBps,
   });
-  const freshCachedQuote = readCachedDzapQuote(
-    cacheKey,
-    DZAP_QUOTE_CACHE_SOFT_TTL_MS,
-  );
-  if (freshCachedQuote) {
-    return freshCachedQuote;
+  const cachedEntry = dzapQuoteCache.get(cacheKey);
+  const cacheAgeMs = cachedEntry
+    ? Date.now() - cachedEntry.fetchedAt
+    : Number.POSITIVE_INFINITY;
+  if (cachedEntry && cacheAgeMs <= DZAP_QUOTE_CACHE_SOFT_TTL_MS) {
+    return cachedEntry.quote;
   }
 
-  const staleCachedQuote = readCachedDzapQuote(
-    cacheKey,
-    DZAP_QUOTE_CACHE_HARD_TTL_MS,
-  );
+  const staleCachedQuote =
+    cachedEntry && cacheAgeMs <= DZAP_QUOTE_CACHE_HARD_TTL_MS
+      ? cachedEntry.quote
+      : null;
 
   const loadFreshDzapQuote = async (): Promise<DzapQuote | null> => {
     const srcDecimals = getTokenDecimalsByAddress(srcToken);
@@ -789,15 +871,20 @@ export async function getDzapQuote(params: {
         : undefined;
 
     try {
+      if (isDzapRateLimited() || dzapConcurrentQuotes >= DZAP_MAX_CONCURRENT_QUOTES) {
+        return staleCachedQuote ?? null;
+      }
+
       const quotes = await withTimeout(
         fetchDzapTradeQuotes({
           fromChain: params.chainId,
           ...(quoteAccount ? { account: quoteAccount } : {}),
-          filter: QuoteFilters.best,
+          filter: "best",
           disableEstimation: true,
           timingStrategy: {
-            minWaitTimeMs: 400,
-            maxWaitTimeMs: 5_000,
+            minWaitTimeMs: 0,
+            maxWaitTimeMs: 250,
+            subsequentDelayMs: 250,
             preferredResultCount: 1,
             relaxMinSuccessOnDelay: true,
           },
@@ -933,7 +1020,11 @@ export async function getDzapQuote(params: {
 
   const inflightQuote = dzapQuoteInflight.get(cacheKey);
   if (staleCachedQuote) {
-    if (!inflightQuote) {
+    const shouldRefresh =
+      cacheAgeMs >= DZAP_MIN_REFRESH_INTERVAL_MS &&
+      !isDzapRateLimited() &&
+      dzapConcurrentQuotes < DZAP_MAX_CONCURRENT_QUOTES;
+    if (shouldRefresh && !inflightQuote) {
       const refresh = loadFreshDzapQuote().finally(() => {
         if (dzapQuoteInflight.get(cacheKey) === refresh) {
           dzapQuoteInflight.delete(cacheKey);
@@ -946,6 +1037,10 @@ export async function getDzapQuote(params: {
 
   if (inflightQuote) {
     return inflightQuote;
+  }
+
+  if (isDzapRateLimited() || dzapConcurrentQuotes >= DZAP_MAX_CONCURRENT_QUOTES) {
+    return null;
   }
 
   const refresh = loadFreshDzapQuote().finally(() => {

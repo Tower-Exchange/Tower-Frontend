@@ -70,6 +70,7 @@ import {
 import arcTestnetLogo from "@/public/assets/ARCSvg.svg";
 const NATIVE_USDC_GAS_RESERVE = 0.05;
 const QUOTE_REFRESH_INTERVAL_MS = 10000;
+const QUOTE_INPUT_DEBOUNCE_MS = 500;
 const QUOTE_REVEAL_WAIT_MS = 12_000;
 const TOKEN_PRICE_REFRESH_INTERVAL_MS = 60_000;
 const SWAP_SUCCESS_NOTIFICATION_DURATION_MS = 10000;
@@ -1872,7 +1873,7 @@ const SwapCard = ({
         refreshQuotes,
         QUOTE_REFRESH_INTERVAL_MS,
       );
-    }, 150);
+    }, QUOTE_INPUT_DEBOUNCE_MS);
 
     return () => {
       quoteRefreshKeyRef.current = null;
