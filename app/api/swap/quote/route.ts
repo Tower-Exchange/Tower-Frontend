@@ -37,6 +37,14 @@ import {
   XYLONET_DEX_NAME,
   type XylonetQuote,
 } from "@/lib/xylonetDex";
+import {
+  getKyberQuote,
+  isKyberEnabled,
+  KYBER_DEX_ID,
+  KYBER_DEX_NAME,
+  normalizeKyberDexId,
+  type KyberQuote,
+} from "@/lib/kyberDex";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -83,6 +91,7 @@ type BackendQuote = {
   routeOptions?: RouteOption[];
   dzap?: DzapQuote["dzap"];
   xylonet?: XylonetQuote["xylonet"];
+  kyber?: KyberQuote["kyber"];
 };
 
 type RouteOption = {
@@ -264,6 +273,29 @@ const xylonetQuoteToBackendQuote = (quote: XylonetQuote): BackendQuote => ({
   route: quote.route,
 });
 
+const kyberQuoteToBackendQuote = (quote: KyberQuote): BackendQuote => ({
+  inputToken: quote.inputToken,
+  outputToken: quote.outputToken,
+  inputAmount: quote.inputAmount,
+  swapInputAmount: quote.swapInputAmount,
+  outputAmount: quote.outputAmount,
+  minOut: quote.minOut,
+  inputAmountNative: quote.inputAmountNative,
+  swapInputAmountNative: quote.swapInputAmountNative,
+  outputAmountNative: quote.outputAmountNative,
+  minOutNative: quote.minOutNative,
+  priceImpact: quote.priceImpact,
+  gasEstimate: quote.gasEstimate,
+  slippage: quote.slippage,
+  feeMode: quote.feeMode,
+  feeBps: quote.feeBps,
+  feeRecipient: quote.feeRecipient,
+  platformFeeAmount: quote.platformFeeAmount,
+  platformFeeAmountNative: quote.platformFeeAmountNative,
+  kyber: quote.kyber,
+  route: quote.route,
+});
+
 async function fetchLocalAeroQuote(params: {
   inputToken: string;
   outputToken: string;
@@ -397,6 +429,71 @@ async function supplementWithDzapQuote(params: {
   return {
     quotes: dedupeQuotesByDex([...params.quotes, dzapQuote]),
     routeOptions: dedupeRouteOptions([...params.routeOptions, dzapRouteOption]),
+  };
+}
+
+async function fetchKyberAggregatorQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+}): Promise<BackendQuote | null> {
+  if (!isKyberEnabled()) {
+    return null;
+  }
+
+  const quote = await getKyberQuote({
+    inputToken: params.inputToken,
+    outputToken: params.outputToken,
+    inputAmount: params.inputAmount,
+    slippageBps: params.slippageTolerance,
+    chainId: params.chainId,
+  });
+
+  return quote ? kyberQuoteToBackendQuote(quote) : null;
+}
+
+async function supplementWithKyberQuote(params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageTolerance: number;
+  chainId: number;
+  requestedDexId?: string;
+  quotes: BackendQuote[];
+  routeOptions: RouteOption[];
+}) {
+  if (params.requestedDexId && params.requestedDexId !== KYBER_DEX_ID) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const hasKyberQuote = params.routeOptions.some(
+    (option) => normalizeDexId(option.dexId || option.dexName) === KYBER_DEX_ID,
+  );
+  if (hasKyberQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const kyberQuote = await fetchKyberAggregatorQuote(params);
+  if (!kyberQuote) {
+    return {
+      quotes: params.quotes,
+      routeOptions: params.routeOptions,
+    };
+  }
+
+  const kyberRouteOption = routeOptionFromQuote(kyberQuote);
+
+  return {
+    quotes: dedupeQuotesByDex([...params.quotes, kyberQuote]),
+    routeOptions: dedupeRouteOptions([...params.routeOptions, kyberRouteOption]),
   };
 }
 
@@ -551,6 +648,10 @@ const normalizeDexId = (dexId?: string) => {
     return AERO_DEX_ID;
   }
 
+  if (normalizeKyberDexId(normalized) === KYBER_DEX_ID) {
+    return KYBER_DEX_ID;
+  }
+
   return normalized;
 };
 
@@ -626,6 +727,8 @@ const routeOptionFromQuote = (quote: QuoteLike): RouteOption => {
               ? TOWER_DEX_NAME
               : normalizedDexId === AERO_DEX_ID
                 ? AERO_DEX_NAME
+              : normalizedDexId === KYBER_DEX_ID
+                ? KYBER_DEX_NAME
               : hop?.dexName || hop?.dexId || "Unknown Router",
     outputAmount: quote.outputAmount,
     routeType: quote.route?.type || "single",
@@ -1084,7 +1187,7 @@ export async function handleSwapQuotePost(request: NextRequest) {
     }
 
     if (isArcMainnet) {
-      const [aeroResult, dzapResult, xylonetResult] = await Promise.all([
+      const [aeroResult, dzapResult, xylonetResult, kyberResult] = await Promise.all([
         supplementWithLocalAeroQuote({
           inputToken: resolvedInputToken,
           outputToken: resolvedOutputToken,
@@ -1114,6 +1217,16 @@ export async function handleSwapQuotePost(request: NextRequest) {
           quotes: backendResult.quotes,
           routeOptions: backendResult.routeOptions,
         }),
+        supplementWithKyberQuote({
+          inputToken: resolvedInputToken,
+          outputToken: resolvedOutputToken,
+          inputAmount,
+          slippageTolerance: resolvedSlippageBps,
+          chainId: resolvedChainId,
+          requestedDexId: backendDexRequest,
+          quotes: backendResult.quotes,
+          routeOptions: backendResult.routeOptions,
+        }),
       ]);
 
       backendResult = {
@@ -1121,11 +1234,13 @@ export async function handleSwapQuotePost(request: NextRequest) {
           ...aeroResult.quotes,
           ...dzapResult.quotes,
           ...xylonetResult.quotes,
+          ...kyberResult.quotes,
         ]),
         routeOptions: dedupeRouteOptions([
           ...aeroResult.routeOptions,
           ...dzapResult.routeOptions,
           ...xylonetResult.routeOptions,
+          ...kyberResult.routeOptions,
         ]),
       };
     } else {

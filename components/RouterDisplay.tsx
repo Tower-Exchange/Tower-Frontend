@@ -13,6 +13,7 @@ import towerLogo from "@/public/assets/Tower Logo.svg";
 import unitflowLogo from "@/public/assets/unitflow.svg";
 import xylonetLogo from "@/public/assets/xylonetlogo.svg";
 import aeroLogo from "@/public/assets/aero-icon 1.svg";
+import kyberLogo from "@/public/assets/kyber-logo-knc 1.svg";
 import routeIcon from "@/public/assets/route icon.svg";
 
 interface RouteOption {
@@ -40,7 +41,7 @@ interface RouterDisplayProps {
 }
 
 type SupportedRouter = {
-  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex" | "aero";
+  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex" | "aero" | "kyberswap";
   aliases: string[];
   name: string;
   logo: StaticImageData | string;
@@ -76,6 +77,12 @@ const SUPPORTED_ROUTERS: SupportedRouter[] = [
     aliases: ["aero", "aerodrome", "aero-cl", "aero-slipstream", "slipstream"],
     name: "Aero",
     logo: aeroLogo,
+  },
+  {
+    id: "kyberswap",
+    aliases: ["kyberswap", "kyber", "kyber-swap", "knc"],
+    name: "KyberSwap",
+    logo: kyberLogo,
   },
 ];
 

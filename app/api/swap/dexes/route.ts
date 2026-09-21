@@ -13,6 +13,12 @@ import {
   XYLONET_DEX_ID,
   XYLONET_DEX_NAME,
 } from "@/lib/xylonetDex";
+import {
+  getKyberDexInfo,
+  isKyberEnabled,
+  KYBER_DEX_ID,
+  KYBER_DEX_NAME,
+} from "@/lib/kyberDex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
@@ -88,6 +94,13 @@ const getCanonicalXylonetDex = (): DexInfo => ({
   enabled: isXylonetEnabled(),
 });
 
+const getCanonicalKyberDex = (): DexInfo => ({
+  ...getKyberDexInfo(),
+  id: KYBER_DEX_ID,
+  name: KYBER_DEX_NAME,
+  enabled: isKyberEnabled(),
+});
+
 const isExecutorUnsupportedDexId = (id: string) =>
   id === "unitflow" && !UNITFLOW_EXECUTOR_ENABLED;
 
@@ -145,6 +158,19 @@ const normalizeDex = (dex: DexInfo): DexInfo => {
     };
   }
 
+  if (
+    id === KYBER_DEX_ID ||
+    id === "kyber" ||
+    name.includes("kyber")
+  ) {
+    return {
+      ...dex,
+      id: KYBER_DEX_ID,
+      name: KYBER_DEX_NAME,
+      enabled: dex.enabled !== false,
+    };
+  }
+
   return dex;
 };
 
@@ -189,12 +215,14 @@ export async function getSwapDexesResponse() {
     const towerDex = isTowerDexEnabled() ? getCanonicalTowerDex() : null;
     const aeroDex = getCanonicalAeroDex();
     const xylonetDex = isXylonetEnabled() ? getCanonicalXylonetDex() : null;
+    const kyberDex = isKyberEnabled() ? getCanonicalKyberDex() : null;
     const localDexes = [
       synthraDex,
       unitFlowDex,
       ...(towerDex ? [towerDex] : []),
       aeroDex,
       ...(xylonetDex ? [xylonetDex] : []),
+      ...(kyberDex ? [kyberDex] : []),
     ];
 
     if (SWAPS_DISABLED) {
@@ -250,6 +278,7 @@ export async function getSwapDexesResponse() {
     console.error('Error fetching DEXes:', error);
     const towerDex = isTowerDexEnabled() ? [getCanonicalTowerDex()] : [];
     const xylonetDex = isXylonetEnabled() ? [getCanonicalXylonetDex()] : [];
+    const kyberDex = isKyberEnabled() ? [getCanonicalKyberDex()] : [];
     return NextResponse.json({
       success: true,
       data: [
@@ -258,6 +287,7 @@ export async function getSwapDexesResponse() {
         ...towerDex,
         getCanonicalAeroDex(),
         ...xylonetDex,
+        ...kyberDex,
       ],
     });
   }

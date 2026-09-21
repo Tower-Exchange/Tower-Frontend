@@ -16,6 +16,10 @@ import {
   buildXylonetSwapTransaction,
   isXylonetQuote,
 } from "@/lib/xylonetDex";
+import {
+  buildKyberSwapTransaction,
+  isKyberQuote,
+} from "@/lib/kyberDex";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 import {
@@ -117,6 +121,8 @@ const refreshSwapQuote = async (
             ? quote.dzap.fromChain
             : isXylonetQuote(quote)
               ? quote.xylonet.fromChain
+              : isKyberQuote(quote)
+                ? quote.kyber.fromChain
               : undefined,
       }),
     }),
@@ -182,10 +188,13 @@ export async function handleSwapBuildTxPost(
       isDzapQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     const canReuseSubmittedXylonetQuote =
       isXylonetQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
+    const canReuseSubmittedKyberQuote =
+      isKyberQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     if (
       !refreshed.ok &&
       !canReuseSubmittedDzapQuote &&
-      !canReuseSubmittedXylonetQuote
+      !canReuseSubmittedXylonetQuote &&
+      !canReuseSubmittedKyberQuote
     ) {
       return refreshed.error;
     }
@@ -241,6 +250,29 @@ export async function handleSwapBuildTxPost(
       }
 
       const transactions = await buildXylonetSwapTransaction({
+        quote: freshQuote,
+        userAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: boundBuildTxApprovals(transactions, exactApprovalAmount),
+      });
+    }
+
+    if (isKyberQuote(freshQuote)) {
+      if (!userAddress) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing userAddress for KyberSwap swap",
+            code: SWAP_API_ERROR_CODES.INVALID_REQUEST,
+          },
+          { status: 400 },
+        );
+      }
+
+      const transactions = await buildKyberSwapTransaction({
         quote: freshQuote,
         userAddress,
       });
