@@ -302,6 +302,9 @@ const readErrorMessage = (error: unknown) => {
 const asString = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;
 
+const isDzapRateLimitMessage = (message: string) =>
+  /rate\s*limit/i.test(message);
+
 type DzapQuoteCacheEntry = {
   quote: DzapQuote;
   fetchedAt: number;
@@ -912,7 +915,12 @@ export async function getDzapQuote(params: {
     } catch (error) {
       const message = readErrorMessage(error);
       if (staleCachedQuote) {
-        console.warn("[DZap] quote unavailable, reusing cached Tower quote:", message);
+        console.warn(
+          isDzapRateLimitMessage(message)
+            ? "[DZap] rate limited, reusing cached Tower quote"
+            : "[DZap] quote unavailable, reusing cached Tower quote:",
+          message,
+        );
         return staleCachedQuote;
       }
 
@@ -1104,11 +1112,19 @@ export async function buildDzapSwapTransaction(params: {
       }
     : null;
 
-  const updatedDestAmount = Object.values(built.updatedQuotes || {})[0];
-  const expectedUserOutput =
+  const updatedDestAmount = Object.values(
+    (built as { updatedQuotes?: Record<string, unknown> } | null)?.updatedQuotes ||
+      {},
+  )[0];
+  const rawExpectedOutput =
     updatedDestAmount ||
     params.quote.outputAmountNative ||
-    params.quote.minOutNative;
+    params.quote.minOutNative ||
+    "";
+  const expectedUserOutput =
+    typeof rawExpectedOutput === "string"
+      ? rawExpectedOutput
+      : String(rawExpectedOutput);
   const feeRecipient = params.quote.feeRecipient
     ? getAddress(params.quote.feeRecipient)
     : DZAP_SWAP_FEE_RECIPIENT;

@@ -250,7 +250,7 @@ export default function DevelopersPage() {
                 initial={{ opacity: 0, y: 25 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-                className="bg-[#191a1c] border border-[#272c35] rounded-[25px] p-6 sm:p-8 shadow-xl"
+                className="bg-[#14181f] border border-[#272c35] rounded-[25px] p-6 sm:p-8 shadow-xl"
               >
                 {/* Header section with #7BB8FF icon */}
                 <div className="flex items-center gap-3">
