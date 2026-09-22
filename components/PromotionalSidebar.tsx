@@ -70,21 +70,21 @@ export default function PromotionalSidebar() {
     //     router.push("/bridge?fromChain=arc-testnet&fromToken=USDC&toChain=solana&toToken=USDC");
     //   }
     // },
-    // {
-    //   id: "cirbtc-trade",
-    //   heroImage: "/assets/TradecircBTC.svg",
-    //   imageWidthClass: "w-[100px]",
-    //   title: "Trade $cirBTC on Tower",
-    //   description: "cirBTC, Circle's wrapped Bitcoin backed 1:1 by real BTC, is now available for trading on Tower.",
-    //   ctaText: "Trade cirBTC",
-    //   action: () => {
-    //     router.push("/?select=cirBTC");
-    //     setTimeout(() => {
-    //       const event = new CustomEvent("select-sell-token", { detail: { symbol: "cirBTC" } });
-    //       window.dispatchEvent(event);
-    //     }, 50);
-    //   }
-    // }
+    {
+      id: "cirbtc-trade",
+      heroImage: "/assets/TradecircBTC.svg",
+      imageWidthClass: "w-[100px]",
+      title: "Trade $cirBTC on Tower",
+      description: "cirBTC, Circle's wrapped Bitcoin backed 1:1 by real BTC, is now available for trading on Tower.",
+      ctaText: "Trade cirBTC",
+      action: () => {
+        router.push("/?select=cirBTC");
+        setTimeout(() => {
+          const event = new CustomEvent("select-sell-token", { detail: { symbol: "cirBTC" } });
+          window.dispatchEvent(event);
+        }, 50);
+      }
+    }
     // {
     //   id: "cirbtc-dca",
     //   heroImage: "/assets/DCAwithcirBTC.svg",
