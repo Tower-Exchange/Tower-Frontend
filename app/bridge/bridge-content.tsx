@@ -1752,11 +1752,11 @@ export default function BridgePageContent({
 
                     {recentAddresses.length > 0 && (
                       <div className="pt-2">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs font-medium text-muted-foreground">
+                        <div className="flex items-center justify-between mb-2 font-sora" style={{ fontFamily: "var(--font-sora)" }}>
+                          <p className="text-xs font-medium text-muted-foreground" style={{ fontFamily: "var(--font-sora)" }}>
                             Recent Addresses
                           </p>
-                          <span className="text-[10px] text-muted-foreground/60">
+                          <span className="text-[10px] text-muted-foreground/60" style={{ fontFamily: "var(--font-sora)" }}>
                             {recentAddresses.length} saved
                           </span>
                         </div>
