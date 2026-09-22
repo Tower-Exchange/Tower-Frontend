@@ -27,6 +27,7 @@ import { getArcSwapTokenAddress } from "@/lib/aeroDex";
 import { getArcRpcProxyPath } from "@/lib/arcRpc";
 import { isXylonetEnabled } from "@/lib/xylonetEnabled";
 import { isKyberEnabled } from "@/lib/kyberEnabled";
+import { isUniswapEnabled } from "@/lib/uniswapEnabled";
 import { ensureWalletOnArcNetwork } from "@/lib/arcWalletNetwork";
 import { useTowerSwap, type SwapQuote, type SwapRouteOption } from "@/lib/hooks/useTowerSwap";
 import { useTowerNetworkMode } from "@/lib/hooks/useTowerNetworkMode";
@@ -641,6 +642,16 @@ const normalizeSwapRouteDexId = (dexId?: string) => {
     normalized.includes("kyber")
   ) {
     return "kyberswap";
+  }
+
+  if (
+    normalized === "uniswap" ||
+    normalized === "uni" ||
+    normalized === "uniswap-v4" ||
+    normalized === "uniswap-v3" ||
+    normalized.includes("uniswap")
+  ) {
+    return "uniswap";
   }
 
   return normalized;
@@ -1511,6 +1522,7 @@ const SwapCard = ({
         "aero",
         "tower-dex",
         ...(isKyberEnabled() ? ["kyberswap"] : []),
+        ...(isUniswapEnabled() ? ["uniswap"] : []),
         ...(isXylonetEnabled() ? ["xylonet-adapter"] : []),
       ];
     }

@@ -215,7 +215,11 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
                     (requestedDexId === "xylonet-adapter" &&
                       (optionDexId === "xylonet" || optionDexId === "xylo")) ||
                     (requestedDexId === "kyberswap" &&
-                      (optionDexId === "kyber" || optionDexId === "knc"))
+                      (optionDexId === "kyber" || optionDexId === "knc")) ||
+                    (requestedDexId === "uniswap" &&
+                      (optionDexId === "uni" ||
+                        optionDexId === "uniswap-v4" ||
+                        optionDexId === "uniswap-v3"))
                   );
                 })
               : null) || routeOptions[0];

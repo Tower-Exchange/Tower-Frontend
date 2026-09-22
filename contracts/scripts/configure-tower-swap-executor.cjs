@@ -278,6 +278,17 @@ function savedKyberSwapAdapter() {
   );
 }
 
+function savedUniswapAdapter() {
+  return readJson(
+    path.join(
+      __dirname,
+      "..",
+      "deployments",
+      "uniswap-adapter-arc-mainnet-deployment.json",
+    ),
+  );
+}
+
 function savedUnitFlowMainnet() {
   return readJson(
     path.join(__dirname, "..", "deployments", "unitflow-arc-mainnet.json"),
@@ -323,6 +334,7 @@ function resolveAllowlist(kind) {
   const dzapAdapter = savedDzapAdapter()?.adapter;
   const lifiAdapter = savedLiFiAdapter()?.adapter;
   const kyberAdapter = savedKyberSwapAdapter()?.adapter;
+  const uniswapAdapter = savedUniswapAdapter()?.adapter;
   const router = savedMainnetAmm()?.router;
   const unitflowRouter = savedUnitFlowMainnet()?.v3?.swapRouter;
   const aeroSwapRouter = "0xb4702E1375F712da2e0d5F534c30c0c1513EdB2B";
@@ -332,6 +344,7 @@ function resolveAllowlist(kind) {
     dzapAdapter,
     lifiAdapter,
     kyberAdapter,
+    uniswapAdapter,
     SYNTHRA_MAINNET.universalRouter,
     SYNTHRA_MAINNET.swapRouter02,
     unitflowRouter,
@@ -343,6 +356,7 @@ function resolveAllowlist(kind) {
     dzapAdapter,
     lifiAdapter,
     kyberAdapter,
+    uniswapAdapter,
     SYNTHRA_MAINNET.permit2,
     SYNTHRA_MAINNET.swapRouter02,
     SYNTHRA_MAINNET.universalRouter,
