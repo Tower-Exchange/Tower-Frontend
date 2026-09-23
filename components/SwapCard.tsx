@@ -1757,8 +1757,6 @@ const SwapCard = ({
           }, QUOTE_REVEAL_WAIT_MS);
         }
 
-        const incomingByDex: SwapRouteOption[][] = [];
-
         await Promise.allSettled(
           requestedDexIds.map(async (dexId) => {
             const quoteData = await getQuote(
@@ -1798,7 +1796,18 @@ const SwapCard = ({
               return;
             }
 
-            incomingByDex.push(incomingRouteOptions);
+            const nextRouteOptions = mergeRouteOptionsByDexId(
+              routeOptionsMergeRef.current,
+              incomingRouteOptions,
+            );
+            routeOptionsMergeRef.current = nextRouteOptions;
+
+            if (hasQuotesForAllRouters(nextRouteOptions, availableRouterIds)) {
+              revealRouteOptions(nextRouteOptions, true);
+              return;
+            }
+
+            commitMergedRouteOptions(nextRouteOptions);
           }),
         );
 
@@ -1806,14 +1815,8 @@ const SwapCard = ({
           return;
         }
 
-        const nextRouteOptions = incomingByDex.reduce(
-          (merged, incoming) => mergeRouteOptionsByDexId(merged, incoming),
-          routeOptionsMergeRef.current,
-        );
-        routeOptionsMergeRef.current = nextRouteOptions;
-
-        if (nextRouteOptions.length > 0) {
-          revealRouteOptions(nextRouteOptions, true);
+        if (routeOptionsMergeRef.current.length > 0) {
+          revealRouteOptions(routeOptionsMergeRef.current, true);
         }
       } catch (error) {
         console.error("Error getting swap quote:", error);

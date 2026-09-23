@@ -130,6 +130,7 @@ interface UseTowerSwapOptions {
 }
 
 const SWAP_API_BASE_URL = '/api/swap';
+const QUOTE_FETCH_TIMEOUT_MS = 8_000;
 
 /**
  * Custom hook for interacting with Tower Exchange DEX Aggregator backend
@@ -167,12 +168,18 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           chainId,
         });
 
+        const controller = new AbortController();
+        const timeoutId = window.setTimeout(
+          () => controller.abort(),
+          QUOTE_FETCH_TIMEOUT_MS,
+        );
         const response = await fetch(`${swapApiBaseUrl}/quote`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
           cache: 'no-store',
+          signal: controller.signal,
           body: JSON.stringify({
             inputToken,
             outputToken,
@@ -181,7 +188,7 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
             dexId,
             chainId,
           }),
-        });
+        }).finally(() => window.clearTimeout(timeoutId));
 
         const responseData = await response.json().catch(() => null);
         const quote: SwapQuote | null =
@@ -275,6 +282,15 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
         });
         return quote;
       } catch (err) {
+        const aborted =
+          err instanceof DOMException
+            ? err.name === "AbortError"
+            : err instanceof Error && err.name === "AbortError";
+        if (aborted) {
+          console.warn("[useTowerSwap] quote timed out", { dexId });
+          return null;
+        }
+
         const errorMessage =
           err instanceof Error
             ? err.message

@@ -584,7 +584,7 @@ const Badges = ({
                     className="group flex min-w-0 flex-col items-center rounded-xl outline-none transition-transform hover:-translate-y-1 focus-visible:ring-2 focus-visible:ring-primary/70"
                     aria-label={
                       badge.isMystery
-                        ? "Open Arctember badge countdown"
+                        ? "Open Arctober badge countdown"
                         : `Open ${badge.name} badge details`
                     }
                   >

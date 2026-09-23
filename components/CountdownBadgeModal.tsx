@@ -7,8 +7,8 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import mysteryBadgeImage from "@/public/assets/mystery badge.svg";
 
-/** Arc mainnet launch: 9 days from 7 Sep 2026. */
-export const ARC_MAINNET_LAUNCH_AT = "2026-09-16T15:00:00.000Z";
+/** Arctober mystery badges unlock on 30 Sep 2026. */
+export const ARCTOBER_BADGE_AT = "2026-09-30T00:00:00.000Z";
 
 const COUNTDOWN_UNITS = [
   { key: "days", label: "days" },
@@ -92,8 +92,8 @@ export const CountdownBadgeModal = ({
   }
 
   const countdown = getCountdownParts(
-    Date.parse(ARC_MAINNET_LAUNCH_AT),
-    nowMs ?? Date.parse(ARC_MAINNET_LAUNCH_AT),
+    Date.parse(ARCTOBER_BADGE_AT),
+    nowMs ?? Date.parse(ARCTOBER_BADGE_AT),
   );
 
   return createPortal(
@@ -142,7 +142,7 @@ export const CountdownBadgeModal = ({
                 id="countdown-badge-title"
                 className="mt-6 max-w-[22rem] text-center text-base font-medium leading-snug text-foreground sm:text-lg"
               >
-                To kick off Arctember, we&apos;ve got two special badges coming
+                To kick off Arctober, we&apos;ve got two special badges coming
                 your way.
               </p>
 
@@ -167,7 +167,7 @@ export const CountdownBadgeModal = ({
               </div>
 
               <p className="mt-6 text-center text-base font-medium text-foreground">
-                Mainnet Countdown
+                Arctober Countdown
               </p>
             </div>
           </motion.div>
