@@ -20,6 +20,10 @@ import {
   buildKyberSwapTransaction,
   isKyberQuote,
 } from "@/lib/kyberDex";
+import {
+  buildUniswapSwapTransaction,
+  isUniswapQuote,
+} from "@/lib/uniswapDex";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 import {
@@ -190,11 +194,14 @@ export async function handleSwapBuildTxPost(
       isXylonetQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     const canReuseSubmittedKyberQuote =
       isKyberQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
+    const canReuseSubmittedUniswapQuote =
+      isUniswapQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     if (
       !refreshed.ok &&
       !canReuseSubmittedDzapQuote &&
       !canReuseSubmittedXylonetQuote &&
-      !canReuseSubmittedKyberQuote
+      !canReuseSubmittedKyberQuote &&
+      !canReuseSubmittedUniswapQuote
     ) {
       return refreshed.error;
     }
@@ -273,6 +280,29 @@ export async function handleSwapBuildTxPost(
       }
 
       const transactions = await buildKyberSwapTransaction({
+        quote: freshQuote,
+        userAddress,
+      });
+
+      return NextResponse.json({
+        success: true,
+        data: boundBuildTxApprovals(transactions, exactApprovalAmount),
+      });
+    }
+
+    if (isUniswapQuote(freshQuote)) {
+      if (!userAddress) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Missing userAddress for Uniswap swap",
+            code: SWAP_API_ERROR_CODES.INVALID_REQUEST,
+          },
+          { status: 400 },
+        );
+      }
+
+      const transactions = await buildUniswapSwapTransaction({
         quote: freshQuote,
         userAddress,
       });

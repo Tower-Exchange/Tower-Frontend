@@ -55,7 +55,6 @@ const DZAP_QUOTE_CACHE_HARD_TTL_MS = 120_000;
 const DZAP_MIN_REFRESH_INTERVAL_MS = 30_000;
 const DZAP_MAX_CONCURRENT_QUOTES = 2;
 const DZAP_RATE_LIMIT_COOLDOWN_MS = 30_000;
-const DZAP_FEE_STATE_TIMEOUT_MS = 800;
 const DZAP_TRADE_QUOTES_URL = `${(
   process.env.DZAP_API_URL ||
   process.env.NEXT_PUBLIC_DZAP_API_URL ||
@@ -845,13 +844,23 @@ export async function getDzapQuote(params: {
       feeBps: DZAP_SWAP_FEE_BPS,
       treasury: DZAP_SWAP_FEE_RECIPIENT,
     };
+    const feeCacheKey =
+      executorAddress != null
+        ? `${params.chainId}:${executorAddress.toLowerCase()}`
+        : "";
+    const cachedFeeState = feeCacheKey
+      ? executorFeeStateCache.get(feeCacheKey)
+      : undefined;
     const feeState = canCollectExecutorFee
-      ? await withTimeout(
-          getDzapExecutorFeeState(params.chainId, executorAddress as Address),
-          DZAP_FEE_STATE_TIMEOUT_MS,
-          "DZap executor fee state timed out",
-        ).catch(() => disabledFeeState)
+      ? cachedFeeState?.state ?? {
+          enabled: true,
+          feeBps: DZAP_SWAP_FEE_BPS,
+          treasury: DZAP_SWAP_FEE_RECIPIENT,
+        }
       : disabledFeeState;
+    if (canCollectExecutorFee && executorAddress && !cachedFeeState) {
+      void getDzapExecutorFeeState(params.chainId, executorAddress);
+    }
     const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
     const platformFeeAmountNative = shouldCollectExecutorFee
       ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR

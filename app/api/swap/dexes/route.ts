@@ -19,6 +19,12 @@ import {
   KYBER_DEX_ID,
   KYBER_DEX_NAME,
 } from "@/lib/kyberDex";
+import {
+  getUniswapDexInfo,
+  isUniswapEnabled,
+  UNISWAP_DEX_ID,
+  UNISWAP_DEX_NAME,
+} from "@/lib/uniswapDex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
@@ -101,6 +107,13 @@ const getCanonicalKyberDex = (): DexInfo => ({
   enabled: isKyberEnabled(),
 });
 
+const getCanonicalUniswapDex = (): DexInfo => ({
+  ...getUniswapDexInfo(),
+  id: UNISWAP_DEX_ID,
+  name: UNISWAP_DEX_NAME,
+  enabled: isUniswapEnabled(),
+});
+
 const isExecutorUnsupportedDexId = (id: string) =>
   id === "unitflow" && !UNITFLOW_EXECUTOR_ENABLED;
 
@@ -171,6 +184,20 @@ const normalizeDex = (dex: DexInfo): DexInfo => {
     };
   }
 
+  if (
+    id === UNISWAP_DEX_ID ||
+    id === "uni" ||
+    id === "uniswap-v4" ||
+    name.includes("uniswap")
+  ) {
+    return {
+      ...dex,
+      id: UNISWAP_DEX_ID,
+      name: UNISWAP_DEX_NAME,
+      enabled: dex.enabled !== false,
+    };
+  }
+
   return dex;
 };
 
@@ -216,6 +243,7 @@ export async function getSwapDexesResponse() {
     const aeroDex = getCanonicalAeroDex();
     const xylonetDex = isXylonetEnabled() ? getCanonicalXylonetDex() : null;
     const kyberDex = isKyberEnabled() ? getCanonicalKyberDex() : null;
+    const uniswapDex = isUniswapEnabled() ? getCanonicalUniswapDex() : null;
     const localDexes = [
       synthraDex,
       unitFlowDex,
@@ -223,6 +251,7 @@ export async function getSwapDexesResponse() {
       aeroDex,
       ...(xylonetDex ? [xylonetDex] : []),
       ...(kyberDex ? [kyberDex] : []),
+      ...(uniswapDex ? [uniswapDex] : []),
     ];
 
     if (SWAPS_DISABLED) {
@@ -279,6 +308,7 @@ export async function getSwapDexesResponse() {
     const towerDex = isTowerDexEnabled() ? [getCanonicalTowerDex()] : [];
     const xylonetDex = isXylonetEnabled() ? [getCanonicalXylonetDex()] : [];
     const kyberDex = isKyberEnabled() ? [getCanonicalKyberDex()] : [];
+    const uniswapDex = isUniswapEnabled() ? [getCanonicalUniswapDex()] : [];
     return NextResponse.json({
       success: true,
       data: [
@@ -288,6 +318,7 @@ export async function getSwapDexesResponse() {
         getCanonicalAeroDex(),
         ...xylonetDex,
         ...kyberDex,
+        ...uniswapDex,
       ],
     });
   }

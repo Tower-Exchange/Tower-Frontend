@@ -46,7 +46,6 @@ const NORMALIZED_DECIMALS = 18;
 const BPS_DENOMINATOR = 10_000n;
 const DEFAULT_TOWER_SWAP_FEE_BPS = 30;
 const EXECUTOR_FEE_STATE_TTL_MS = 30_000;
-const KYBER_FEE_STATE_TIMEOUT_MS = 800;
 const QUOTE_TIMEOUT_MS = 8_000;
 const BUILD_TIMEOUT_MS = 20_000;
 const QUOTE_CACHE_SOFT_TTL_MS = 8_000;
@@ -890,13 +889,17 @@ export async function getKyberQuote(params: {
       feeBps: KYBER_SWAP_FEE_BPS,
       treasury: KYBER_SWAP_FEE_RECIPIENT,
     };
-    const feeState = canCollectExecutorFee
-      ? await withTimeout(
-          getKyberExecutorFeeState(executorAddress),
-          KYBER_FEE_STATE_TIMEOUT_MS,
-          "KyberSwap executor fee state timed out",
-        ).catch(() => disabledFeeState)
+    const assumedFeeState: KyberExecutorFeeState = canCollectExecutorFee
+      ? executorFeeStateCache?.state ?? {
+          enabled: true,
+          feeBps: KYBER_SWAP_FEE_BPS,
+          treasury: KYBER_SWAP_FEE_RECIPIENT,
+        }
       : disabledFeeState;
+    if (canCollectExecutorFee && !executorFeeStateCache) {
+      void getKyberExecutorFeeState(executorAddress);
+    }
+    const feeState = assumedFeeState;
     const shouldCollectExecutorFee = canCollectExecutorFee && feeState.enabled;
     const platformFeeAmountNative = shouldCollectExecutorFee
       ? (amountIn * BigInt(feeState.feeBps)) / BPS_DENOMINATOR

@@ -35,7 +35,9 @@
     "deploy:lifi-adapter:mainnet": "hardhat run scripts/deploy-lifi-adapter.cjs --network arc-mainnet",
     "verify:lifi-adapter:mainnet": "hardhat run scripts/verify-lifi-adapter.cjs --network arc-mainnet",
     "deploy:kyberswap-adapter:mainnet": "hardhat run scripts/deploy-kyberswap-adapter.cjs --network arc-mainnet",
-    "verify:kyberswap-adapter:mainnet": "hardhat run scripts/verify-kyberswap-adapter.cjs --network arc-mainnet"
+    "verify:kyberswap-adapter:mainnet": "hardhat run scripts/verify-kyberswap-adapter.cjs --network arc-mainnet",
+    "deploy:uniswap-adapter:mainnet": "hardhat run scripts/deploy-uniswap-adapter.cjs --network arc-mainnet",
+    "verify:uniswap-adapter:mainnet": "hardhat run scripts/verify-uniswap-adapter.cjs --network arc-mainnet"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^4.0.0",
