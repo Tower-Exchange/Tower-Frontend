@@ -14,7 +14,6 @@ import unitflowLogo from "@/public/assets/unitflow.svg";
 import xylonetLogo from "@/public/assets/xylonetlogo.svg";
 import aeroLogo from "@/public/assets/aero-icon 1.svg";
 import kyberLogo from "@/public/assets/kyber-logo-knc 1.svg";
-import uniswapLogo from "@/public/assets/Uniswap_icon_pink 1.svg";
 import routeIcon from "@/public/assets/route icon.svg";
 
 interface RouteOption {
@@ -42,7 +41,7 @@ interface RouterDisplayProps {
 }
 
 type SupportedRouter = {
-  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex" | "aero" | "kyberswap" | "uniswap";
+  id: "xylonet-adapter" | "synthra" | "unitflow" | "tower-dex" | "aero" | "kyberswap";
   aliases: string[];
   name: string;
   logo: StaticImageData | string;
@@ -84,12 +83,6 @@ const SUPPORTED_ROUTERS: SupportedRouter[] = [
     aliases: ["kyberswap", "kyber", "kyber-swap", "knc"],
     name: "KyberSwap",
     logo: kyberLogo,
-  },
-  {
-    id: "uniswap",
-    aliases: ["uniswap", "uni", "uniswap-v4", "uniswap-v3"],
-    name: "Uniswap",
-    logo: uniswapLogo,
   },
 ];
 
@@ -389,9 +382,9 @@ export default function RouterDisplay({
   const bestQuotedRoute =
     displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
-  const dexCount = displayedRoutes.length;
-  const primaryDexName = displayedRoutes[0]?.router.name || "Router";
-  const otherDexNames = displayedRoutes.slice(1).map(({ router }) => router.name);
+  const dexCount = allQuotedRoutes.length;
+  const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
+  const otherDexNames = allQuotedRoutes.slice(1).map(({ router }) => router.name);
   const dexNamesLabel = otherDexNames.length
     ? `${primaryDexName} and ${otherDexNames.length} other${
         otherDexNames.length === 1 ? "" : "s"
