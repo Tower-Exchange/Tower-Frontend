@@ -4,7 +4,7 @@
  * Bridge Service - Arc Network Bridge Integration
  * 
  * Handles bridging USDC across different EVM blockchains using Arc's Bridge Kit
- * Reference: https://docs.arc.network/app-kit/bridge
+ * Reference: https://docs.arc.io/app-kit/bridge
  * 
  * This module uses browser APIs (window.ethereum) and must run on the client-side
  */
