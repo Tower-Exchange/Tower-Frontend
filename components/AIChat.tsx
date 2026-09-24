@@ -733,7 +733,7 @@ export const AIChat = () => {
         wallet_address: walletAddress,
         solana_wallet_address: solanaAddress || undefined,
         solanaWalletAddress: solanaAddress || undefined,
-        chain_id: 5042002, // Arc testnet
+        chain_id: 5042, // Arc mainnet
         enable_wallet_access: enableWalletAccess,
         enable_swap_execution: enableSwap,
         enable_bridge_execution: enableBridge,

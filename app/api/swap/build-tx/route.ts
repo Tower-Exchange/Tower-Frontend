@@ -123,7 +123,7 @@ const refreshSwapQuote = async (
               ? quote.xylonet.fromChain
               : isKyberQuote(quote)
                 ? quote.kyber.fromChain
-              : undefined,
+              : (typeof quote.chainId === "number" && quote.chainId > 0 ? quote.chainId : 5042),
       }),
     }),
   );

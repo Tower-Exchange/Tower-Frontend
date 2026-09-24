@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSwapBackendUrl } from "@/lib/resolveSwapBackendUrl";
-import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { ARC_NETWORK_CHAIN_ID, TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { getDefaultBridgeNetworkMode } from "@/lib/bridgeNetworks";
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
 import { isPositiveDecimalAmount } from "@/lib/positiveAmount";
 import {
@@ -1084,10 +1085,14 @@ export async function handleSwapQuotePost(request: NextRequest) {
     };
     const normalizedRequestedDexId = normalizeDexId(dexId);
     const parsedChainId = Number(chainId);
+    const defaultChainId =
+      getDefaultBridgeNetworkMode() === "mainnet"
+        ? ARC_NETWORK_CHAIN_ID.mainnet
+        : ARC_NETWORK_CHAIN_ID.testnet;
     const resolvedChainId =
       Number.isFinite(parsedChainId) && parsedChainId > 0
         ? parsedChainId
-        : AERO_CHAIN_ID;
+        : defaultChainId;
     const isArcMainnet = resolvedChainId === AERO_CHAIN_ID;
 
     if (!inputToken || !outputToken || !inputAmount) {
