@@ -378,14 +378,13 @@ export default function RouterDisplay({
     return null;
   }
 
-  const displayedRoutes =
-    availableRouterIdSet.size > 0 ? allQuotedRoutes : allQuotedRoutes.slice(0, 3);
+  const displayedRoutes = allQuotedRoutes.slice(0, 3);
   const bestQuotedRoute =
     displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
-  const dexCount = allQuotedRoutes.length;
-  const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
-  const otherDexNames = allQuotedRoutes.slice(1).map(({ router }) => router.name);
+  const dexCount = displayedRoutes.length;
+  const primaryDexName = displayedRoutes[0]?.router.name || "Router";
+  const otherDexNames = displayedRoutes.slice(1).map(({ router }) => router.name);
   const dexNamesLabel = otherDexNames.length
     ? `${primaryDexName} and ${otherDexNames.length} other${
         otherDexNames.length === 1 ? "" : "s"
