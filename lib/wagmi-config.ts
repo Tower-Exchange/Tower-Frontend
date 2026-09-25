@@ -9,6 +9,7 @@ import {
   safeWallet,
   walletConnectWallet,
 } from "@rainbow-me/rainbowkit/wallets";
+import { blofinWallet } from "@/lib/wallets/blofinWallet";
 import { createConfig, http } from "wagmi";
 import {
   coinbaseWallet as coinbaseWalletConnector,
@@ -197,7 +198,7 @@ const connectors = walletConnectProjectId
         },
         {
           groupName: "Recommended",
-          wallets: [bitgetWallet, rabbyWallet, metaMaskWallet, coinbaseWallet],
+          wallets: [bitgetWallet, blofinWallet, rabbyWallet, metaMaskWallet, coinbaseWallet],
         },
         {
           groupName: "Other wallets",
