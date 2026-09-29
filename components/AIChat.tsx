@@ -20,6 +20,11 @@ import { v4 as uuidv4 } from "uuid";
 import { Plus, Trash2, Menu, X } from "lucide-react";
 import { useSwapExecution } from "@/lib/useSwapExecution";
 import { TOKEN_CONTRACTS, TOKEN_DECIMALS } from "@/lib/arcNetwork";
+import { AERO_MAINNET_TOKENS, AERO_TOKEN_DECIMALS } from "@/lib/aeroDex";
+import {
+  fetchArcTokenUsdPrices,
+  type StableTokenSymbol,
+} from "@/lib/tokenUsdPrices";
 import useBridge from "@/lib/hooks/useBridge";
 import { SUPPORTED_CHAINS, getBridgeFees } from "@/lib/bridgeService";
 import { getBridgeTransactionUrl, isSolanaBridgeChain } from "@/lib/bridgeNetworks";
@@ -59,7 +64,21 @@ type AiSwapActivityQuote = {
   inputToken?: string;
   outputToken?: string;
   inputAmount?: string;
+  outputAmount?: string;
 };
+
+const ACTIVITY_TOKEN_METADATA = [
+  ...Object.entries(TOKEN_CONTRACTS).map(([symbol, address]) => ({
+    address: address.toLowerCase(),
+    decimals: TOKEN_DECIMALS[symbol] ?? 18,
+    symbol: ACTIVITY_TOKEN_SYMBOL_ALIASES[symbol] ?? symbol,
+  })),
+  ...Object.entries(AERO_MAINNET_TOKENS).map(([symbol, address]) => ({
+    address: address.toLowerCase(),
+    decimals: AERO_TOKEN_DECIMALS[address.toLowerCase()] ?? 18,
+    symbol: ACTIVITY_TOKEN_SYMBOL_ALIASES[symbol] ?? symbol,
+  })),
+];
 
 const formatSessionTitle = (text: string) => {
   const summary = text.trim().replace(/\s+/g, " ");
@@ -96,11 +115,11 @@ const getTokenDecimalsByAddress = (tokenAddress?: string) => {
     return 18;
   }
 
-  const tokenSymbol = Object.entries(TOKEN_CONTRACTS).find(
-    ([, address]) => address.toLowerCase() === tokenAddress.toLowerCase(),
-  )?.[0];
-
-  return tokenSymbol ? TOKEN_DECIMALS[tokenSymbol] ?? 18 : 18;
+  return (
+    ACTIVITY_TOKEN_METADATA.find(
+      ({ address }) => address === tokenAddress.toLowerCase(),
+    )?.decimals ?? 18
+  );
 };
 
 const getTokenSymbolByAddress = (tokenAddress?: string) => {
@@ -108,15 +127,32 @@ const getTokenSymbolByAddress = (tokenAddress?: string) => {
     return null;
   }
 
-  const tokenSymbol = Object.entries(TOKEN_CONTRACTS).find(
-    ([, address]) => address.toLowerCase() === tokenAddress.toLowerCase(),
-  )?.[0];
+  return (
+    ACTIVITY_TOKEN_METADATA.find(
+      ({ address }) => address === tokenAddress.toLowerCase(),
+    )?.symbol ?? null
+  );
+};
 
-  if (!tokenSymbol) {
-    return null;
+const getSwapUsdValue = async ({
+  sourceSymbol,
+  destinationSymbol,
+  sourceAmount,
+  destinationAmount,
+}: {
+  sourceSymbol: string;
+  destinationSymbol: string;
+  sourceAmount: number;
+  destinationAmount: number | null;
+}) => {
+  if (sourceSymbol === "USDC") return sourceAmount;
+  if (destinationSymbol === "USDC" && destinationAmount != null) {
+    return destinationAmount;
   }
 
-  return ACTIVITY_TOKEN_SYMBOL_ALIASES[tokenSymbol] ?? tokenSymbol;
+  const prices = await fetchArcTokenUsdPrices();
+  const price = prices[sourceSymbol as StableTokenSymbol];
+  return Number.isFinite(price) ? sourceAmount * price : null;
 };
 
 const normalizeAiQuoteAmountToTokenDecimals = (
@@ -203,17 +239,45 @@ const logAiSwapActivity = async ({
       quote.inputAmount,
       quote.inputToken,
     );
+    const outputAmount = formatTokenAmountForActivity(
+      quote.outputAmount,
+      quote.outputToken,
+    );
+
+    if (!sourceSymbol || !destinationSymbol || amount == null) {
+      console.error("Skipping AI swap activity with unknown token metadata", {
+        inputToken: quote.inputToken,
+        outputToken: quote.outputToken,
+        transactionHash,
+      });
+      return null;
+    }
+
+    const amountUsd = await getSwapUsdValue({
+      sourceSymbol,
+      destinationSymbol,
+      sourceAmount: amount,
+      destinationAmount: outputAmount,
+    });
+    if (amountUsd == null || !Number.isFinite(amountUsd)) {
+      console.error("Skipping AI swap activity without a reliable USD value", {
+        sourceSymbol,
+        destinationSymbol,
+        transactionHash,
+      });
+      return null;
+    }
 
     const { data, error, success } = await insertActivity({
         wallet_address: walletAddress.toLowerCase(),
         type: "Swap",
-        source_currency_ticker: sourceSymbol ?? "Token",
-        destination_currency_ticker: destinationSymbol ?? "Token",
+        source_currency_ticker: sourceSymbol,
+        destination_currency_ticker: destinationSymbol,
         source_network_name: "Arc",
         destination_network_name: "Arc",
         status: "Successful",
         amount,
-        amount_usd: amount,
+        amount_usd: amountUsd,
         transaction_hash: transactionHash || null,
         timestamp: new Date().toISOString(),
       });
@@ -1866,8 +1930,6 @@ export const AIChat = () => {
     </div>
   );
 };
-
-
 
 
 
