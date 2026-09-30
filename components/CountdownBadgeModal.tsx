@@ -8,7 +8,7 @@ import { X } from "lucide-react";
 import mysteryBadgeImage from "@/public/assets/mystery badge.svg";
 
 /** Arctober mystery badges unlock on 30 Sep 2026. */
-export const ARCTOBER_BADGE_AT = "2026-09-30T00:00:00.000Z";
+export const ARCTOBER_BADGE_AT = "2026-09-28T00:00:00.000Z";
 
 const COUNTDOWN_UNITS = [
   { key: "days", label: "days" },
