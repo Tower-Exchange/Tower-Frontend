@@ -58,17 +58,46 @@ export async function POST(request: NextRequest) {
       return walletError("Activity type is required.");
     }
 
+    const sourceTicker =
+      typeof body.source_currency_ticker === "string"
+        ? body.source_currency_ticker.trim()
+        : "";
+    const destinationTicker =
+      typeof body.destination_currency_ticker === "string"
+        ? body.destination_currency_ticker.trim()
+        : "";
+
+    if (
+      type.toLowerCase() === "swap" &&
+      (!sourceTicker ||
+        !destinationTicker ||
+        sourceTicker.toLowerCase() === "token" ||
+        destinationTicker.toLowerCase() === "token")
+    ) {
+      return walletError("Swap activities require recognized token tickers.");
+    }
+
+    const parseOptionalNumber = (value: unknown) => {
+      const parsed =
+        typeof value === "number"
+          ? value
+          : typeof value === "string"
+            ? Number.parseFloat(value)
+            : null;
+      return parsed != null && Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const amount = parseOptionalNumber(body.amount);
+    const amountUsd = parseOptionalNumber(body.amount_usd);
+    if (type.toLowerCase() === "swap" && (amount == null || amountUsd == null)) {
+      return walletError("Swap activities require valid amount and amount_usd values.");
+    }
+
     const row = {
       wallet_address: wallet,
       type,
-      source_currency_ticker:
-        typeof body.source_currency_ticker === "string"
-          ? body.source_currency_ticker
-          : null,
-      destination_currency_ticker:
-        typeof body.destination_currency_ticker === "string"
-          ? body.destination_currency_ticker
-          : null,
+      source_currency_ticker: sourceTicker || null,
+      destination_currency_ticker: destinationTicker || null,
       source_network_name:
         typeof body.source_network_name === "string"
           ? body.source_network_name
@@ -85,24 +114,9 @@ export async function POST(request: NextRequest) {
         typeof body.status === "string" && body.status.trim()
           ? body.status
           : "Successful",
-      amount:
-        typeof body.amount === "number"
-          ? body.amount
-          : typeof body.amount === "string"
-            ? Number.parseFloat(body.amount)
-            : null,
-      amount_usd:
-        typeof body.amount_usd === "number"
-          ? body.amount_usd
-          : typeof body.amount_usd === "string"
-            ? Number.parseFloat(body.amount_usd)
-            : null,
-      fee:
-        typeof body.fee === "number"
-          ? body.fee
-          : typeof body.fee === "string"
-            ? Number.parseFloat(body.fee)
-            : null,
+      amount,
+      amount_usd: amountUsd,
+      fee: parseOptionalNumber(body.fee),
       fee_currency_ticker:
         typeof body.fee_currency_ticker === "string"
           ? body.fee_currency_ticker

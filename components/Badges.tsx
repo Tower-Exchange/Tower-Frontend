@@ -3,13 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { X } from "lucide-react";
+import { Check, Sparkles, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import badgeClaimedImage from "@/public/assets/Squire 2.svg";
 import badgeUnclaimedImage from "@/public/assets/Dull 2.svg";
 import mysteryBadgeImage from "@/public/assets/mystery badge.svg";
+import silverBadgeImage from "@/public/assets/Silver.svg";
+import goldBadgeImage from "@/public/assets/Gold.svg";
 import starIcon from "@/public/assets/Star icon.svg";
-import { CountdownBadgeModal } from "@/components/CountdownBadgeModal";
+import { ARCTOBER_BADGE_AT, CountdownBadgeModal } from "@/components/CountdownBadgeModal";
 import {
   claimSquireBadge,
   fetchSquireBadgeStatus,
@@ -21,12 +23,16 @@ type Badge = {
   id: string;
   name: string;
   alt: string;
+  description?: string;
+  image?: any;
   isClaimed: boolean;
   isInteractive: boolean;
   isMystery?: boolean;
+  requirements?: string[];
+  perks?: string;
 };
 
-const badges: Badge[] = [
+const initialBadges: Badge[] = [
   {
     id: "squire",
     name: "Squire",
@@ -51,6 +57,46 @@ const badges: Badge[] = [
   },
 ];
 
+const postArctoberBadges: Badge[] = [
+  {
+    id: "squire",
+    name: "Squire",
+    alt: "Squire badge",
+    isClaimed: false,
+    isInteractive: true,
+  },
+  {
+    id: "swap-pioneer",
+    name: "Swap Pioneer",
+    alt: "Swap Pioneer badge",
+    description: "For those who swapped when the new market was only beginning to take shape.",
+    image: silverBadgeImage,
+    isClaimed: false,
+    isInteractive: true,
+    requirements: [
+      "Eligibility criteria to be revealed soon",
+      // "Completed > 20 swap transactions",
+      // "Reached $1000 total volume swapped",
+    ],
+    perks: "[Redacted]",
+  },
+  {
+    id: "bridge-pioneer",
+    name: "Bridge Pioneer",
+    alt: "Bridge Pioneer badge",
+    description: "You crossed early, carrying value into a new era on Arc.",
+    image: goldBadgeImage,
+    isClaimed: false,
+    isInteractive: true,
+    requirements: [
+      "Eligibility criteria to be revealed soon",
+      // "Completed >20 bridge transactions",
+      // "Reached $1000 total volume bridged",
+    ],
+    perks: "[Redacted]",
+  },
+];
+
 const getBadgeDescription = (isClaimed: boolean) =>
   isClaimed
     ? "You've taken your first step on Tower.\nYou're a real user."
@@ -63,9 +109,20 @@ const BadgeDetailsModal = ({
   badge: Badge | null;
   onClose: () => void;
 }) => {
-  // Always show the brown (claimed) badge image for squire badge in the modal
+  const [activeTab, setActiveTab] = useState<"requirements" | "perks">("requirements");
+
+  useEffect(() => {
+    if (badge) {
+      setActiveTab(badge.requirements && badge.requirements.length > 0 ? "requirements" : "perks");
+    }
+  }, [badge]);
+
+  // Always show the brown (claimed) badge image for squire badge in the modal if claimed
   const badgeImage =
-    badge?.id === "squire" ? badgeClaimedImage : badge?.isClaimed ? badgeClaimedImage : badgeUnclaimedImage;
+    badge?.image ??
+    (badge?.id === "squire" ? badgeClaimedImage : badge?.isClaimed ? badgeClaimedImage : badgeUnclaimedImage);
+
+  const hasRequirements = Boolean(badge?.requirements && badge.requirements.length > 0);
 
   return (
     <AnimatePresence>
@@ -91,14 +148,14 @@ const BadgeDetailsModal = ({
             transition={{ duration: 0.22, ease: "easeOut" }}
             className="fixed inset-0 z-[91] flex items-center justify-center px-4 py-6"
           >
-            <div className="relative w-full max-w-[580px] rounded-[28px] border border-border bg-card px-8 pb-10 pt-16 shadow-2xl sm:px-10">
+            <div className="relative w-full max-w-[540px] rounded-[28px] border border-border bg-[#14181f] px-7 pb-9 pt-12 shadow-2xl sm:px-10">
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close badge details"
-                className="absolute right-8 top-8 inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
+                className="absolute right-7 top-7 inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
               >
-                <X size={21} strokeWidth={2} />
+                <X size={20} strokeWidth={2} />
               </button>
 
               <div className="flex flex-col items-center text-center">
@@ -107,30 +164,91 @@ const BadgeDetailsModal = ({
                   alt={`${badge.name} badge`}
                   width={128}
                   height={144}
-                  className="h-auto w-[128px] object-contain"
+                  className="h-auto w-[116px] object-contain sm:w-[128px]"
                 />
-                <h3 className="mt-3 text-2xl font-semibold leading-none text-foreground">
+                <h3 className="mt-4 text-2xl font-semibold leading-none text-foreground sm:text-[26px]">
                   {badge.name}
                 </h3>
-                <p className="mt-4 whitespace-pre-line text-center text-base font-medium leading-snug text-foreground sm:text-lg">
-                  {getBadgeDescription(badge.isClaimed)}
+                <p className="mt-3 max-w-[380px] whitespace-pre-line text-center text-sm font-medium leading-snug text-foreground sm:text-base">
+                  {badge.description ?? getBadgeDescription(badge.isClaimed)}
                 </p>
 
-                <div className="mt-6 inline-flex h-9 items-center justify-center rounded-full bg-white/[0.06] px-4 text-sm font-semibold text-foreground">
-                  Perks
-                </div>
+                {hasRequirements ? (
+                  <div className="mt-6 inline-flex items-center rounded-full bg-[#14181f] p-1 border border-white/5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("requirements")}
+                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                        activeTab === "requirements"
+                          ? "bg-[#1d212b] text-foreground shadow-sm"
+                          : "text-[#464D5A] "
+                      }`}
+                    >
+                      Requirements
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("perks")}
+                      className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-all sm:text-sm ${
+                        activeTab === "perks"
+                          ? "bg-[#1d212b] text-foreground shadow-sm"
+                          : "text-[#464D5A] "
+                      }`}
+                    >
+                      Perks
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-6 inline-flex h-9 items-center justify-center rounded-full bg-white/[0.06] px-4 text-sm font-semibold text-foreground">
+                    Perks
+                  </div>
+                )}
 
-                <div className="mt-5 flex w-full items-center gap-4 rounded-[28px] border border-border px-6 py-5 text-left sm:px-7">
-                  <Image
-                    src={starIcon}
-                    alt=""
-                    width={14}
-                    height={14}
-                    className="shrink-0"
-                  />
-                  <p className="text-base font-medium leading-relaxed text-foreground sm:text-lg">
-                    Squire Badge holders get a daily limit of 40 AI messages.
-                  </p>
+                <div className="mt-5 w-full rounded-[24px] border border-[#828282]/22 p-5 text-left sm:p-6">
+                  {activeTab === "requirements" && badge.requirements ? (
+                    <div className="flex flex-col gap-4">
+                      {badge.requirements.map((req, i) => (
+                        <div key={i} className="flex items-center gap-3">
+                          <div className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
+                            <Check size={12} strokeWidth={3} />
+                          </div>
+                          <p className="text-sm font-medium text-foreground sm:text-base">
+                            {req}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      {badge.perks ? (
+                        <>
+                          <Image
+                            src={starIcon}
+                            alt=""
+                            width={14}
+                            height={14}
+                            className="shrink-0"
+                          />
+                          <p className="text-sm font-medium text-foreground sm:text-base">
+                            {badge.perks}
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Image
+                            src={starIcon}
+                            alt=""
+                            width={14}
+                            height={14}
+                            className="shrink-0"
+                          />
+                          <p className="text-base font-medium leading-relaxed text-foreground sm:text-lg">
+                            Squire Badge holders get a daily limit of 40 AI messages.
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -424,9 +542,30 @@ const Badges = ({
     }
   }, [countdownOpenKey]);
 
+  const [isArctoberEnded, setIsArctoberEnded] = useState(false);
+
+  useEffect(() => {
+    const checkEnded = () => {
+      let ended = Date.now() >= Date.parse(ARCTOBER_BADGE_AT);
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("arctober") === "ended" || params.get("arctober") === "true") {
+          ended = true;
+        }
+      }
+      setIsArctoberEnded(ended);
+      if (ended) {
+        setShowCountdownModal(false);
+      }
+    };
+    checkEnded();
+  }, []);
+
+  const activeBadgesList = isArctoberEnded ? postArctoberBadges : initialBadges;
+
   const displayBadges = useMemo(
     () =>
-      badges.map((badge) =>
+      activeBadgesList.map((badge) =>
         badge.id === "squire"
           ? {
               ...badge,
@@ -434,7 +573,7 @@ const Badges = ({
             }
           : badge,
       ),
-    [squireBadgeStatus?.isClaimed],
+    [activeBadgesList, squireBadgeStatus?.isClaimed],
   );
   const selectedBadge =
     displayBadges.find((badge) => badge.id === selectedBadgeId) ?? null;
@@ -536,11 +675,13 @@ const Badges = ({
           <div className="flex w-full justify-center lg:justify-end">
             <div className="grid w-full max-w-[430px] grid-cols-3 items-start gap-4 sm:gap-7 lg:max-w-[460px] lg:gap-10">
               {displayBadges.map((badge) => {
-                const badgeImage = badge.isMystery
-                  ? mysteryBadgeImage
-                  : badge.isClaimed
-                    ? badgeClaimedImage
-                    : badgeUnclaimedImage;
+                const badgeImage = badge.image
+                  ? badge.image
+                  : badge.isMystery
+                    ? mysteryBadgeImage
+                    : badge.isClaimed
+                      ? badgeClaimedImage
+                      : badgeUnclaimedImage;
                 const badgeContent = (
                   <>
                     <Image
@@ -550,7 +691,7 @@ const Badges = ({
                       height={144}
                       className="h-auto w-[70px] object-contain sm:w-[88px] lg:w-[104px]"
                     />
-                    <div className="mt-4 h-8 text-center text-xl font-semibold leading-none text-foreground sm:text-2xl">
+                    <div className="mt-4 h-8 text-center text-base font-semibold leading-[1.3] text-foreground sm:text-lg">
                       {badge.name}
                     </div>
                   </>

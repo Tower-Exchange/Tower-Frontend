@@ -4,6 +4,7 @@ import type { StaticImageData } from "next/image";
 import { getTokenIcon } from "./tokenIcons";
 import { fetchArcTokenUsdPrices } from "./tokenUsdPrices";
 import { AERO_MAINNET_TOKENS } from "./aeroDex";
+import { readStoredBridgeNetworkMode } from "./bridgeNetworks";
 
 export interface WalletHolding {
   token: string;
@@ -14,7 +15,6 @@ export interface WalletHolding {
   rawBalance: number;
 }
 
-const ARC_HOLDINGS_CHAIN_ID = "arc";
 const SUPPORTED_PROFILE_TOKENS = [
   { symbol: "EURC", address: AERO_MAINNET_TOKENS.EURC },
   { symbol: "cirBTC", address: AERO_MAINNET_TOKENS.cirBTC },
@@ -35,6 +35,7 @@ export const useWalletHoldings = (walletAddress: string | null) => {
       setLoading(true);
       setError(null);
       try {
+        const holdingsChainId = "arc";
         const fetchBalance = async ({
           tokenAddress,
           balanceType,
@@ -47,7 +48,7 @@ export const useWalletHoldings = (walletAddress: string | null) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               address: walletAddress,
-              chainId: ARC_HOLDINGS_CHAIN_ID,
+              chainId: holdingsChainId,
               tokenAddress,
               balanceType,
             }),

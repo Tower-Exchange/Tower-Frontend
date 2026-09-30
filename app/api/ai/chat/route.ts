@@ -99,6 +99,7 @@ type SwapQuoteIntent = {
   outputToken: string;
   inputAmount: string;
   dexId?: AiSwapDexId;
+  chainId?: number;
 };
 
 type BridgeExecutionRequest = {
@@ -883,7 +884,7 @@ const buildSwapReadyReply = (quote: AiQuote) => {
     "Here's the summary:",
     `- You'll receive approximately ${formatNormalizedQuoteAmount(quote.outputAmount)} ${outputSymbol}.`,
     "- The transaction is prepared and ready for you to sign with your wallet.",
-    "- Once you sign, it will be broadcast to the Arc testnet.",
+    "- Once you sign, it will be broadcast to the Arc network.",
     "",
     "Please proceed to sign the transaction with your wallet to complete the swap.",
     "",
@@ -981,6 +982,7 @@ const fetchLocalQuote = async (
           inputAmount: intent.inputAmount,
           slippageTolerance: 50,
           dexId: intent.dexId,
+          chainId: 5042,
         }),
       }),
     );

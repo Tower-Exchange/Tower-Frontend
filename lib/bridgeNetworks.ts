@@ -203,7 +203,30 @@ export const inferBridgeNetworkMode = (
 ): BridgeNetworkMode | null =>
   getBridgeNetworkMode(fromChain) || getBridgeNetworkMode(toChain);
 
-export const readStoredBridgeNetworkMode = (): BridgeNetworkMode => "mainnet";
+export const getDefaultBridgeNetworkMode = (): BridgeNetworkMode => {
+  const envMode = process.env.NEXT_PUBLIC_DEFAULT_NETWORK_MODE;
+  if (envMode === "mainnet" || envMode === "testnet") {
+    return envMode;
+  }
+  return "mainnet";
+};
+
+export const readStoredBridgeNetworkMode = (): BridgeNetworkMode => {
+  if (typeof window === "undefined") {
+    return getDefaultBridgeNetworkMode();
+  }
+
+  try {
+    const stored = window.sessionStorage.getItem(BRIDGE_NETWORK_STORAGE_KEY);
+    if (stored === "testnet" || stored === "mainnet") {
+      return stored;
+    }
+  } catch {
+    // Ignore private-mode or storage quota failures.
+  }
+
+  return getDefaultBridgeNetworkMode();
+};
 
 export const TOWER_NETWORK_MODE_EVENT = "tower-network-mode";
 
