@@ -78,7 +78,7 @@ const postArctoberBadges: Badge[] = [
       // "Completed > 20 swap transactions",
       // "Reached $1000 total volume swapped",
     ],
-    perks: "[Redacted]",
+    perks: "To be revealed soon",
   },
   {
     id: "bridge-pioneer",
@@ -93,7 +93,7 @@ const postArctoberBadges: Badge[] = [
       // "Completed >20 bridge transactions",
       // "Reached $1000 total volume bridged",
     ],
-    perks: "[Redacted]",
+    perks: "To be revealed soon",
   },
 ];
 
