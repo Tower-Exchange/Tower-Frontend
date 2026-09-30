@@ -28,6 +28,7 @@ import circleLogo from "@/public/assets/circlelogo.svg";
 import fromAddressIcon from "@/public/assets/fromaddress icon.svg";
 import toAddressIcon from "@/public/assets/toaddress icon.svg";
 import towerLogo from "@/public/assets/Tower Logo.svg";
+import de1Logo from "@/public/assets/de1.svg";
 
 type EthereumProvider = {
   request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
@@ -74,6 +75,13 @@ const getRouteLogo = (routeLabel: string): ActivityDetailsImage => {
 
   if (normalizedRouteLabel.includes("tower")) {
     return towerLogo;
+  }
+
+  if (
+    normalizedRouteLabel.includes("de1") ||
+    normalizedRouteLabel.includes("de¹")
+  ) {
+    return de1Logo;
   }
 
   if (

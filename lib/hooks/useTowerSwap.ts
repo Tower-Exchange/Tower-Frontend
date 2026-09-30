@@ -63,6 +63,21 @@ export interface SwapQuote {
     quoteId?: string;
     tool?: string;
   };
+  de1?: {
+    source: "de1";
+    chain: "arc";
+    fromChain: number;
+    toChain: number;
+    exchange: string;
+    gasPriceDecimals: string;
+    inAmount: string;
+    outAmount: string;
+    priceImpact: string;
+    srcDecimals: number;
+    destDecimals: number;
+    expiresAt: number;
+    quotedAt: number;
+  };
   route: {
     type: 'single' | 'multi' | 'split';
     rawPath?: string;
@@ -226,7 +241,10 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
                     (requestedDexId === "uniswap" &&
                       (optionDexId === "uni" ||
                         optionDexId === "uniswap-v4" ||
-                        optionDexId === "uniswap-v3"))
+                        optionDexId === "uniswap-v3")) ||
+                    (requestedDexId === "de1" &&
+                      (optionDexId === "de1-exchange" ||
+                        optionDexId === "de1exchange"))
                   );
                 })
               : null) || routeOptions[0];

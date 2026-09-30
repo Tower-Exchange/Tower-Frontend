@@ -24,6 +24,8 @@ import useBridge from "@/lib/hooks/useBridge";
 import { SUPPORTED_CHAINS, getBridgeFees } from "@/lib/bridgeService";
 import { getBridgeTransactionUrl, isSolanaBridgeChain } from "@/lib/bridgeNetworks";
 import { TransactionConfirmation } from "./TransactionConfirmation";
+import { AtlasAuthGate } from "@/components/AtlasAuthGate";
+import { isAtlasAuthEnabled } from "@/lib/atlasAuth";
 import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import chatLogo from "@/public/assets/chat_logo.svg";
@@ -304,6 +306,8 @@ const normalizeSession = (session: ChatSession): ChatSession => ({
 
 export const AIChat = () => {
   const { user } = useRainbowKitAuth();
+  const atlasAuthRequired = isAtlasAuthEnabled();
+  const [hasAtlasAccess, setHasAtlasAccess] = useState(!atlasAuthRequired);
   const {
     address: solanaAddress,
     connected: isSolanaConnected,
@@ -681,6 +685,10 @@ export const AIChat = () => {
           isUser: false,
         },
       ]);
+      setMessage("");
+      return;
+    }
+    if (atlasAuthRequired && !hasAtlasAccess) {
       setMessage("");
       return;
     }
@@ -1416,6 +1424,7 @@ export const AIChat = () => {
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 overflow-hidden rounded-[24px] sm:rounded-[28px] border border-border bg-card/95 backdrop-blur-xl shadow-[0_22px_70px_rgba(0,0,0,0.08)] dark:shadow-[0_22px_70px_rgba(0,0,0,0.36)]">
+      <AtlasAuthGate onAccessChange={setHasAtlasAccess} />
       <div className="pointer-events-none absolute inset-0 hidden bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.08),transparent_30%)] dark:bg-[radial-gradient(circle_at_16%_82%,rgba(96,154,255,0.16),transparent_30%),radial-gradient(circle_at_58%_100%,rgba(51,88,148,0.22),transparent_38%),linear-gradient(180deg,#090a0d_0%,#0b0d11_46%,#10161e_100%)] sm:block" />
 
       <motion.div

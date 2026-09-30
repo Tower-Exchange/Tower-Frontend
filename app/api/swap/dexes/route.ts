@@ -25,6 +25,12 @@ import {
   UNISWAP_DEX_ID,
   UNISWAP_DEX_NAME,
 } from "@/lib/uniswapDex";
+import {
+  getDe1DexInfo,
+  isDe1Enabled,
+  DE1_DEX_ID,
+  DE1_DEX_NAME,
+} from "@/lib/de1Dex";
 import { getUnitFlowDexInfo } from '@/lib/unitflowDex';
 import { resolveSwapBackendUrl } from '@/lib/resolveSwapBackendUrl';
 import { withFrontendOriginGate } from "@/lib/server/frontendRequestGuard";
@@ -114,6 +120,13 @@ const getCanonicalUniswapDex = (): DexInfo => ({
   enabled: isUniswapEnabled(),
 });
 
+const getCanonicalDe1Dex = (): DexInfo => ({
+  ...getDe1DexInfo(),
+  id: DE1_DEX_ID,
+  name: DE1_DEX_NAME,
+  enabled: isDe1Enabled(),
+});
+
 const isExecutorUnsupportedDexId = (id: string) =>
   id === "unitflow" && !UNITFLOW_EXECUTOR_ENABLED;
 
@@ -198,6 +211,19 @@ const normalizeDex = (dex: DexInfo): DexInfo => {
     };
   }
 
+  if (
+    id === DE1_DEX_ID ||
+    id === "de1-exchange" ||
+    name.includes("de1")
+  ) {
+    return {
+      ...dex,
+      id: DE1_DEX_ID,
+      name: DE1_DEX_NAME,
+      enabled: dex.enabled !== false,
+    };
+  }
+
   return dex;
 };
 
@@ -244,6 +270,7 @@ export async function getSwapDexesResponse() {
     const xylonetDex = isXylonetEnabled() ? getCanonicalXylonetDex() : null;
     const kyberDex = isKyberEnabled() ? getCanonicalKyberDex() : null;
     const uniswapDex = isUniswapEnabled() ? getCanonicalUniswapDex() : null;
+    const de1Dex = isDe1Enabled() ? getCanonicalDe1Dex() : null;
     const localDexes = [
       synthraDex,
       unitFlowDex,
@@ -252,6 +279,7 @@ export async function getSwapDexesResponse() {
       ...(xylonetDex ? [xylonetDex] : []),
       ...(kyberDex ? [kyberDex] : []),
       ...(uniswapDex ? [uniswapDex] : []),
+      ...(de1Dex ? [de1Dex] : []),
     ];
 
     if (SWAPS_DISABLED) {
@@ -309,6 +337,7 @@ export async function getSwapDexesResponse() {
     const xylonetDex = isXylonetEnabled() ? [getCanonicalXylonetDex()] : [];
     const kyberDex = isKyberEnabled() ? [getCanonicalKyberDex()] : [];
     const uniswapDex = isUniswapEnabled() ? [getCanonicalUniswapDex()] : [];
+    const de1Dex = isDe1Enabled() ? [getCanonicalDe1Dex()] : [];
     return NextResponse.json({
       success: true,
       data: [
@@ -319,6 +348,7 @@ export async function getSwapDexesResponse() {
         ...xylonetDex,
         ...kyberDex,
         ...uniswapDex,
+        ...de1Dex,
       ],
     });
   }

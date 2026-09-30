@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isAtlasAuthWhitelisted } from "@/lib/atlasAuth";
 
 const EVM_WALLET_ADDRESS_PATTERN = /^0x[a-f0-9]{40}$/;
 
@@ -85,12 +86,33 @@ export async function POST(request: NextRequest) {
     }
 
     const supabase = createSupabaseRouteClient();
-    const { error } = await supabase.from("wallet_connections").insert({
+    const { data: existingAuth } = await supabase
+      .from("wallet_connections")
+      .select("authenticated")
+      .eq("address", walletAddress)
+      .eq("authenticated", true)
+      .limit(1)
+      .maybeSingle();
+
+    const connectionRow = {
       address: walletAddress,
       wallet_type: normalizeWalletType(body.walletType),
       chain_id: normalizeChainId(body.chainId),
       connected_at: normalizeConnectedAt(body.connectedAt),
+    };
+    const shouldAuthenticate =
+      Boolean(existingAuth?.authenticated) || isAtlasAuthWhitelisted(walletAddress);
+
+    let { error } = await supabase.from("wallet_connections").insert({
+      ...connectionRow,
+      authenticated: shouldAuthenticate,
+      authenticated_at: shouldAuthenticate ? new Date().toISOString() : null,
     });
+
+    if (error?.message?.toLowerCase().includes("authenticated")) {
+      const retry = await supabase.from("wallet_connections").insert(connectionRow);
+      error = retry.error;
+    }
 
     if (error) {
       throw new Error(error.message);
