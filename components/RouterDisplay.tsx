@@ -392,7 +392,7 @@ export default function RouterDisplay({
     return null;
   }
 
-  const displayedRoutes = allQuotedRoutes.slice(0, 3);
+  const displayedRoutes = allQuotedRoutes;
   const bestQuotedRoute =
     displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;

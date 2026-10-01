@@ -583,6 +583,9 @@ export const isDe1Quote = (quote: unknown): quote is De1Quote => {
 const getDe1Headers = () => {
   const headers: Record<string, string> = {
     Accept: "application/json",
+    "User-Agent": "TowerExchange/1.0 (+https://tower.exchange)",
+    Origin: "https://tower.exchange",
+    Referer: "https://tower.exchange/",
   };
   const apiKey = process.env.DE1_API_KEY?.trim();
   if (apiKey) {
@@ -596,15 +599,24 @@ const fetchDe1Json = async <T,>(
   timeoutMs: number,
   timeoutMessage: string,
 ): Promise<T> => {
-  const response = await withTimeout(
-    fetch(`${DE1_API_BASE_URL}/${path}`, {
-      method: "GET",
-      headers: getDe1Headers(),
-      cache: "no-store",
-    }),
-    timeoutMs,
-    timeoutMessage,
-  );
+  const requestOnce = (headers: Record<string, string>) =>
+    withTimeout(
+      fetch(`${DE1_API_BASE_URL}/${path}`, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }),
+      timeoutMs,
+      timeoutMessage,
+    );
+
+  const headers = getDe1Headers();
+  let response = await requestOnce(headers);
+
+  if (response.status === 403 && headers.Authorization) {
+    const { Authorization: _authorization, ...headersWithoutAuth } = headers;
+    response = await requestOnce(headersWithoutAuth);
+  }
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");

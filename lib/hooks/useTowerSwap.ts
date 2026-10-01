@@ -145,7 +145,7 @@ interface UseTowerSwapOptions {
 }
 
 const SWAP_API_BASE_URL = '/api/swap';
-const QUOTE_FETCH_TIMEOUT_MS = 8_000;
+const QUOTE_FETCH_TIMEOUT_MS = 14_000;
 
 /**
  * Custom hook for interacting with Tower Exchange DEX Aggregator backend
