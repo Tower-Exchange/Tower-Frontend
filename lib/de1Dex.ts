@@ -568,6 +568,20 @@ export const getDe1DexInfo = () =>
     supportedTokens: DE1_SUPPORTED_TOKENS,
   }) as const;
 
+export const de1QuoteToSwapQuote = (quote: De1Quote) => ({
+  ...quote,
+  routeOptions: [
+    {
+      dexId: DE1_DEX_ID,
+      dexName: DE1_DEX_NAME,
+      outputAmount: quote.outputAmount,
+      routeType: quote.route.type,
+      gasEstimate: quote.gasEstimate,
+      quote,
+    },
+  ],
+});
+
 export const isDe1Quote = (quote: unknown): quote is De1Quote => {
   if (!isRecord(quote) || !isRecord(quote.de1)) {
     return false;
@@ -583,14 +597,19 @@ export const isDe1Quote = (quote: unknown): quote is De1Quote => {
 const getDe1Headers = () => {
   const headers: Record<string, string> = {
     Accept: "application/json",
-    "User-Agent": "TowerExchange/1.0 (+https://tower.exchange)",
-    Origin: "https://tower.exchange",
-    Referer: "https://tower.exchange/",
   };
-  const apiKey = process.env.DE1_API_KEY?.trim();
-  if (apiKey) {
-    headers.Authorization = `Bearer ${apiKey}`;
+
+  // Browser requests already send a real Origin. Extra Origin/Referer from
+  // Railway looks like a forged browser call and Cloudflare still 403s it.
+  if (typeof window === "undefined") {
+    headers["User-Agent"] =
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36";
+    const apiKey = process.env.DE1_API_KEY?.trim();
+    if (apiKey) {
+      headers.Authorization = `Bearer ${apiKey}`;
+    }
   }
+
   return headers;
 };
 

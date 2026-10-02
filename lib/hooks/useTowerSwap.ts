@@ -146,6 +146,48 @@ interface UseTowerSwapOptions {
 
 const SWAP_API_BASE_URL = '/api/swap';
 const QUOTE_FETCH_TIMEOUT_MS = 14_000;
+const DE1_CHAIN_ID = 5042;
+
+const isDe1DexRequest = (dexId?: string) => {
+  const normalized = String(dexId || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, "-");
+
+  return (
+    normalized === "de1" ||
+    normalized === "de1-exchange" ||
+    normalized === "de1exchange"
+  );
+};
+
+const fetchDe1QuoteInBrowser = async (params: {
+  inputToken: string;
+  outputToken: string;
+  inputAmount: string;
+  slippageBps: number;
+  chainId?: number;
+}): Promise<SwapQuote | null> => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const { de1QuoteToSwapQuote, getDe1Quote } = await import("@/lib/de1Dex");
+    const de1Quote = await getDe1Quote({
+      inputToken: params.inputToken,
+      outputToken: params.outputToken,
+      inputAmount: params.inputAmount,
+      slippageBps: params.slippageBps,
+      chainId: params.chainId || DE1_CHAIN_ID,
+    });
+
+    return de1Quote ? de1QuoteToSwapQuote(de1Quote) : null;
+  } catch (error) {
+    console.warn("[useTowerSwap] browser De1 quote failed:", error);
+    return null;
+  }
+};
 
 /**
  * Custom hook for interacting with Tower Exchange DEX Aggregator backend
@@ -182,6 +224,21 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
           dexId,
           chainId,
         });
+
+        // De1's Cloudflare WAF blocks Railway server IPs with HTML 403s.
+        // The public API allows browser CORS, so quote De1 from the client.
+        if (isDe1DexRequest(dexId)) {
+          const browserDe1Quote = await fetchDe1QuoteInBrowser({
+            inputToken,
+            outputToken,
+            inputAmount,
+            slippageBps: slippageTolerance,
+            chainId,
+          });
+          if (browserDe1Quote) {
+            return browserDe1Quote;
+          }
+        }
 
         const controller = new AbortController();
         const timeoutId = window.setTimeout(
