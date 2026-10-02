@@ -15,7 +15,7 @@ import xylonetLogo from "@/public/assets/xylonetlogo.svg";
 import aeroLogo from "@/public/assets/aero-icon 1.svg";
 import kyberLogo from "@/public/assets/kyber-logo-knc 1.svg";
 import uniswapLogo from "@/public/assets/Uniswap_icon_pink 1.svg";
-import de1Logo from "@/public/assets/de1.png";
+import de1Logo from "@/public/assets/de1.svg";
 import routeIcon from "@/public/assets/route icon.svg";
 
 interface RouteOption {
