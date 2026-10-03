@@ -118,6 +118,8 @@ const ROUTE_TOKEN_DECIMALS: Record<string, number> = {
   QCAD: 6,
 };
 
+const MAX_DISPLAYED_ROUTES = 3;
+
 const getRouteOutputDisplayDecimals = (symbol?: string) =>
   symbol ? (ROUTE_OUTPUT_DISPLAY_DECIMALS[symbol] ?? 6) : 6;
 
@@ -392,7 +394,8 @@ export default function RouterDisplay({
     return null;
   }
 
-  const displayedRoutes = allQuotedRoutes;
+  // Routes are sorted by the best quote above, so keep the three most competitive.
+  const displayedRoutes = allQuotedRoutes.slice(0, MAX_DISPLAYED_ROUTES);
   const bestQuotedRoute =
     displayedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
