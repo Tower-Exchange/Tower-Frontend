@@ -15,6 +15,7 @@ import {
 import {
   sendMessageToAIAgent,
   transcribeVoiceNote,
+  fetchVoiceReply,
   createAIAgentSession,
   saveChatMessageToHistory,
   getConversationHistory,
@@ -54,8 +55,9 @@ interface Message {
   text: string;
   isUser: boolean;
   isTyping?: boolean;
-  // Set on a user message sent by voice: the bubble plays the recording, and
-  // `text` (the transcript) is what Atlas receives.
+  // Voice note shown instead of the text. On a user message it's their
+  // recording (`text` is the transcript Atlas received); on an Atlas message
+  // it's the spoken reply, with `text` behind a "Show text" toggle.
   voiceNote?: VoiceNote;
 }
 
@@ -64,14 +66,20 @@ const formatVoiceDuration = (seconds: number) => {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
 
-const VoiceNoteBubble = ({ voiceNote }: { voiceNote: VoiceNote }) => {
+const VoiceNoteBubble = ({
+  voiceNote,
+  variant = "user",
+}: {
+  voiceNote: VoiceNote;
+  variant?: "user" | "assistant";
+}) => {
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [durationSec, setDurationSec] = useState(voiceNote.durationSec);
   const progress =
-    voiceNote.durationSec > 0
-      ? Math.min(100, (elapsed / voiceNote.durationSec) * 100)
-      : 0;
+    durationSec > 0 ? Math.min(100, (elapsed / durationSec) * 100) : 0;
+  const isUser = variant === "user";
 
   const togglePlayback = () => {
     const audio = audioRef.current;
@@ -88,7 +96,9 @@ const VoiceNoteBubble = ({ voiceNote }: { voiceNote: VoiceNote }) => {
       <button
         type="button"
         onClick={togglePlayback}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#081019] text-primary"
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+          isUser ? "bg-[#081019] text-primary" : "bg-primary text-[#081019]"
+        }`}
         aria-label={isPlaying ? "Pause voice note" : "Play voice note"}
       >
         {isPlaying ? (
@@ -97,21 +107,31 @@ const VoiceNoteBubble = ({ voiceNote }: { voiceNote: VoiceNote }) => {
           <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
         )}
       </button>
-      <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#081019]/20">
+      <div
+        className={`h-1 flex-1 overflow-hidden rounded-full ${
+          isUser ? "bg-[#081019]/20" : "bg-primary/20"
+        }`}
+      >
         <div
-          className="h-full rounded-full bg-[#081019]"
+          className={`h-full rounded-full ${isUser ? "bg-[#081019]" : "bg-primary"}`}
           style={{ width: `${progress}%` }}
         />
       </div>
       <span className="text-xs tabular-nums">
         {formatVoiceDuration(
-          isPlaying || elapsed > 0 ? elapsed : voiceNote.durationSec,
+          isPlaying || elapsed > 0 ? elapsed : durationSec,
         )}
       </span>
       <audio
         ref={audioRef}
         src={voiceNote.url}
         preload="metadata"
+        onLoadedMetadata={(event) => {
+          const { duration } = event.currentTarget;
+          if (Number.isFinite(duration) && duration > 0) {
+            setDurationSec(duration);
+          }
+        }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
@@ -911,10 +931,26 @@ export const AIChat = () => {
       console.log("AI Response received:", response);
       console.log("Response data:", response.data);
 
+      // Voice in, voice out: answer a voice note with Atlas's spoken reply.
+      // Skip it if the reply text was filtered (the audio would still say the
+      // hidden lines), and fall back to plain text if the audio fails.
+      let replyVoiceNote: VoiceNote | undefined;
+      if (voiceNote && response.audio_id && response.reply === rawResponse.reply) {
+        try {
+          const audio = await fetchVoiceReply(response.audio_id);
+          const url = URL.createObjectURL(audio);
+          voiceNoteUrlsRef.current.push(url);
+          replyVoiceNote = { url, durationSec: 0 };
+        } catch (voiceError) {
+          console.error("Atlas voice reply failed, showing text:", voiceError);
+        }
+      }
+
       const aiResponse: Message = {
         id: Date.now() + 1,
         text: response.reply,
         isUser: false,
+        ...(replyVoiceNote ? { voiceNote: replyVoiceNote } : {}),
       };
       setMessages((prev) => [...prev, aiResponse]);
 
@@ -1845,7 +1881,24 @@ export const AIChat = () => {
                         }`}
                       >
                         {msg.voiceNote ? (
-                          <VoiceNoteBubble voiceNote={msg.voiceNote} />
+                          msg.isUser ? (
+                            <VoiceNoteBubble voiceNote={msg.voiceNote} />
+                          ) : (
+                            <div>
+                              <VoiceNoteBubble
+                                voiceNote={msg.voiceNote}
+                                variant="assistant"
+                              />
+                              <details className="mt-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer select-none">
+                                  Show text
+                                </summary>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground wrap-break-word">
+                                  {msg.text}
+                                </p>
+                              </details>
+                            </div>
+                          )
                         ) : msg.text === "Trading Volume" ? (
                           <div>
                             <div className="mb-4 flex items-center justify-between">
