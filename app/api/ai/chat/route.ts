@@ -1523,6 +1523,10 @@ export async function POST(request: NextRequest) {
       const enrichedSwapData = await enrichStableSwapQuote(request, body, data);
       const enrichedBridgeData = enrichBridgeExecution(body, enrichedSwapData);
       enrichedData = overrideUnsupportedSolanaBridgeReply(body, enrichedBridgeData);
+      // Atlas's audio_id speaks its original reply; drop it if we rewrote the text.
+      if (enrichedData.reply !== data.reply && "audio_id" in enrichedData) {
+        enrichedData = { ...enrichedData, audio_id: null };
+      }
     } catch (enrichmentError) {
       console.error("[ai/chat] Response enrichment failed:", enrichmentError);
     }

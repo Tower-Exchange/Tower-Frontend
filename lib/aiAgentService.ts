@@ -50,6 +50,8 @@ export interface AIAgentResponse {
   reply: string;
   userid: string;
   session_id: string;
+  // Present when Atlas can speak this reply; fetch it with fetchVoiceReply.
+  audio_id?: string | null;
   data?: {
     action?: string;
     balances?: Array<{
@@ -266,6 +268,26 @@ export const transcribeVoiceNote = async (
 
   const data = (await response.json()) as { transcript?: string };
   return (data.transcript || "").trim();
+};
+
+/**
+ * Fetch the spoken version of an Atlas reply (audio/wav) by its audio_id.
+ */
+export const fetchVoiceReply = async (audioId: string): Promise<Blob> => {
+  const response = await fetch("/api/ai/tts", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ audio_id: audioId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readAgentErrorMessage(response));
+  }
+
+  return response.blob();
 };
 
 /**
