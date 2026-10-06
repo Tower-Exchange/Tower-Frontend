@@ -2,7 +2,16 @@
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
 import { motion } from "framer-motion";
 import Image from "next/image";
-import { ArrowUp, ArrowDown, Info, Loader2, Mic, Square } from "lucide-react";
+import {
+  ArrowUp,
+  ArrowDown,
+  Info,
+  Loader2,
+  Mic,
+  Pause,
+  Play,
+  Square,
+} from "lucide-react";
 import {
   sendMessageToAIAgent,
   transcribeVoiceNote,
@@ -35,12 +44,86 @@ import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import chatLogo from "@/public/assets/chat_logo.svg";
 
+interface VoiceNote {
+  url: string;
+  durationSec: number;
+}
+
 interface Message {
   id: number;
   text: string;
   isUser: boolean;
   isTyping?: boolean;
+  // Set on a user message sent by voice: the bubble plays the recording, and
+  // `text` (the transcript) is what Atlas receives.
+  voiceNote?: VoiceNote;
 }
+
+const formatVoiceDuration = (seconds: number) => {
+  const total = Math.max(0, Math.round(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+
+const VoiceNoteBubble = ({ voiceNote }: { voiceNote: VoiceNote }) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const progress =
+    voiceNote.durationSec > 0
+      ? Math.min(100, (elapsed / voiceNote.durationSec) * 100)
+      : 0;
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play();
+    } else {
+      audio.pause();
+    }
+  };
+
+  return (
+    <div className="flex min-w-[11rem] items-center gap-3">
+      <button
+        type="button"
+        onClick={togglePlayback}
+        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#081019] text-primary"
+        aria-label={isPlaying ? "Pause voice note" : "Play voice note"}
+      >
+        {isPlaying ? (
+          <Pause className="h-3.5 w-3.5 fill-current" />
+        ) : (
+          <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+        )}
+      </button>
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-[#081019]/20">
+        <div
+          className="h-full rounded-full bg-[#081019]"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="text-xs tabular-nums">
+        {formatVoiceDuration(
+          isPlaying || elapsed > 0 ? elapsed : voiceNote.durationSec,
+        )}
+      </span>
+      <audio
+        ref={audioRef}
+        src={voiceNote.url}
+        preload="metadata"
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setElapsed(0);
+        }}
+        className="hidden"
+      />
+    </div>
+  );
+};
 
 interface ChatSession {
   id: string;
@@ -410,9 +493,10 @@ export const AIChat = () => {
   >("idle");
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const voiceStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleSendMessageRef = useRef<((text: string) => Promise<void>) | null>(
-    null,
-  );
+  const handleSendMessageRef = useRef<
+    ((text: string, voiceNote?: VoiceNote) => Promise<void>) | null
+  >(null);
+  const voiceNoteUrlsRef = useRef<string[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const reportedSwapErrorRef = useRef<string | null>(null);
@@ -746,7 +830,7 @@ export const AIChat = () => {
     }
   }, [showInfoTooltip, isTouchDevice]);
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, voiceNote?: VoiceNote) => {
     if (!text.trim()) return;
     const walletAddress = user?.wallet?.address?.toLowerCase();
     if (!walletAddress) {
@@ -784,6 +868,7 @@ export const AIChat = () => {
       id: Date.now(),
       text: text,
       isUser: true,
+      ...(voiceNote ? { voiceNote } : {}),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -1280,6 +1365,7 @@ export const AIChat = () => {
       "audio/mp4",
       "audio/ogg;codecs=opus",
     ].find((type) => MediaRecorder.isTypeSupported(type));
+    const recordingStartedAt = Date.now();
     const recorder = new MediaRecorder(stream, {
       ...(mimeType ? { mimeType } : {}),
       audioBitsPerSecond: 32_000,
@@ -1322,7 +1408,12 @@ export const AIChat = () => {
         );
         return;
       }
-      await handleSendMessageRef.current?.(transcript);
+      const url = URL.createObjectURL(audio);
+      voiceNoteUrlsRef.current.push(url);
+      await handleSendMessageRef.current?.(transcript, {
+        url,
+        durationSec: (Date.now() - recordingStartedAt) / 1000,
+      });
     };
 
     mediaRecorderRef.current = recorder;
@@ -1341,7 +1432,9 @@ export const AIChat = () => {
 
   // Leaving the page mid-recording: release the mic and drop the note.
   useEffect(() => {
+    const voiceNoteUrls = voiceNoteUrlsRef.current;
     return () => {
+      voiceNoteUrls.forEach((url) => URL.revokeObjectURL(url));
       if (voiceStopTimerRef.current) {
         clearTimeout(voiceStopTimerRef.current);
       }
@@ -1751,7 +1844,9 @@ export const AIChat = () => {
                               : "rounded-[20px] border border-border bg-card/92 px-4 py-4 text-foreground backdrop-blur-xl sm:rounded-[24px] sm:px-5"
                         }`}
                       >
-                        {msg.text === "Trading Volume" ? (
+                        {msg.voiceNote ? (
+                          <VoiceNoteBubble voiceNote={msg.voiceNote} />
+                        ) : msg.text === "Trading Volume" ? (
                           <div>
                             <div className="mb-4 flex items-center justify-between">
                               <div className="flex items-center gap-2">
