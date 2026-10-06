@@ -29,6 +29,9 @@ import fromAddressIcon from "@/public/assets/fromaddress icon.svg";
 import toAddressIcon from "@/public/assets/toaddress icon.svg";
 import towerLogo from "@/public/assets/Tower Logo.svg";
 import de1Logo from "@/public/assets/de1.svg";
+import aeroLogo from "@/public/assets/aero-icon 1.svg";
+import kyberLogo from "@/public/assets/kyber-logo-knc 1.svg";
+import uniswapLogo from "@/public/assets/Uniswap_icon_pink 1.svg";
 
 type EthereumProvider = {
   request?: (args: { method: string; params?: unknown }) => Promise<unknown>;
@@ -64,6 +67,28 @@ const formatAddress = (address?: string | null) => {
 
 const getRouteLogo = (routeLabel: string): ActivityDetailsImage => {
   const normalizedRouteLabel = routeLabel.toLowerCase();
+
+  if (
+    normalizedRouteLabel.includes("aero") ||
+    normalizedRouteLabel.includes("aerodrome") ||
+    normalizedRouteLabel.includes("slipstream")
+  ) {
+    return aeroLogo;
+  }
+
+  if (
+    normalizedRouteLabel.includes("kyber") ||
+    normalizedRouteLabel.includes("knc")
+  ) {
+    return kyberLogo;
+  }
+
+  if (
+    normalizedRouteLabel.includes("uniswap") ||
+    normalizedRouteLabel.includes("uni")
+  ) {
+    return uniswapLogo;
+  }
 
   if (normalizedRouteLabel.includes("synthra")) {
     return synthraLogo;
