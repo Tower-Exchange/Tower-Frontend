@@ -118,6 +118,8 @@ const ROUTE_TOKEN_DECIMALS: Record<string, number> = {
   QCAD: 6,
 };
 
+const MAX_DISPLAYED_ROUTES = 3;
+
 const getRouteOutputDisplayDecimals = (symbol?: string) =>
   symbol ? (ROUTE_OUTPUT_DISPLAY_DECIMALS[symbol] ?? 6) : 6;
 
@@ -392,13 +394,14 @@ export default function RouterDisplay({
     return null;
   }
 
-  const displayedRoutes = allQuotedRoutes;
+  // Routes are sorted by the best quote above, so keep the three most competitive.
+  const displayedRoutes = allQuotedRoutes.slice(0, MAX_DISPLAYED_ROUTES);
   const bestQuotedRoute =
-    displayedRoutes.find((route) => route.hasQuote) ?? null;
+    allQuotedRoutes.find((route) => route.hasQuote) ?? null;
   const bestPriceRouterId = bestQuotedRoute?.router.id;
-  const dexCount = displayedRoutes.length;
-  const primaryDexName = displayedRoutes[0]?.router.name || "Router";
-  const otherDexNames = displayedRoutes.slice(1).map(({ router }) => router.name);
+  const dexCount = allQuotedRoutes.length;
+  const primaryDexName = allQuotedRoutes[0]?.router.name || "Router";
+  const otherDexNames = allQuotedRoutes.slice(1).map(({ router }) => router.name);
   const dexNamesLabel = otherDexNames.length
     ? `${primaryDexName} and ${otherDexNames.length} other${
         otherDexNames.length === 1 ? "" : "s"
