@@ -1412,6 +1412,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const sessionWallet = wallet.toLowerCase();
+
     chatUrl = getTowerAiChatUrl();
     if (!chatUrl) {
       return aiBackendUnconfiguredResponse();
@@ -1428,7 +1430,7 @@ export async function POST(request: NextRequest) {
       typeof rawBody.message === "string"
         ? rawBody.message.replace(EVM_ADDRESS_IN_TEXT_PATTERN, (match) => {
             const normalized = normalizeWalletAddress(match);
-            return normalized && normalized === wallet ? match : wallet;
+            return normalized && normalized === sessionWallet ? match : sessionWallet;
           })
         : "";
 
@@ -1438,7 +1440,7 @@ export async function POST(request: NextRequest) {
 
     const upstreamBody = buildTowerAiChatRequestBody(
       rawBody,
-      wallet,
+      sessionWallet,
       sanitizedMessage,
     );
 
