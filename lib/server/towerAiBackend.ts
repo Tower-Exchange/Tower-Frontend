@@ -153,11 +153,6 @@ export function logTowerAiProxyError(
 
 export function getTowerAiClientIp(request: NextRequest) {
   const headerValue = (name: string) => request.headers.get(name)?.trim() || "";
-  const cfConnectingIp = headerValue("cf-connecting-ip");
-  if (cfConnectingIp) {
-    return cfConnectingIp;
-  }
-
   const realIp = headerValue("x-real-ip");
   if (realIp) {
     return realIp;
@@ -171,7 +166,12 @@ export function getTowerAiClientIp(request: NextRequest) {
     }
   }
 
-  return null;
+  const cfConnectingIp = headerValue("cf-connecting-ip");
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+
+  return "";
 }
 
 export async function fetchTowerAi(
@@ -195,11 +195,9 @@ export async function fetchTowerAi(
 
   const headers: Record<string, string> = {
     ...getTowerAiAuthHeaders(),
+    "x-tower-client-ip": clientIp || "",
     Connection: "close",
   };
-  if (clientIp) {
-    headers["X-Tower-Client-IP"] = clientIp;
-  }
 
   const fetchPromise = fetch(url, {
     method: "POST",
@@ -251,12 +249,13 @@ export function buildTowerAiChatRequestBody(
   const sessionId = asTrimmedString(payload.session_id);
   const signature = asTrimmedString(payload.wallet_signature);
   const timestamp = asTrimmedString(payload.wallet_signature_timestamp);
+  const normalizedWallet = wallet.toLowerCase();
 
   const body: Record<string, unknown> = {
     message,
-    userid: wallet,
+    userid: normalizedWallet,
     session_id: sessionId,
-    wallet_address: wallet,
+    wallet_address: normalizedWallet,
     chain_id: asFiniteInt(payload.chain_id, 5042002),
     enable_wallet_access: payload.enable_wallet_access === true,
     enable_swap_execution: payload.enable_swap_execution === true,

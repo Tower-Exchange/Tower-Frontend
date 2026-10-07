@@ -61,12 +61,12 @@ const AIAgentPage = () => {
           {/* Originally used 3-column grid when Portfolio Analysis panel was active:
               className="flex min-h-0 flex-1 flex-col gap-4 lg:grid lg:h-full lg:grid-cols-[minmax(0,1fr)_16px_minmax(430px,500px)] lg:gap-4 xl:grid-cols-[minmax(0,1fr)_18px_minmax(460px,540px)]"
           */}
-          <div className="flex h-full min-h-0 flex-1 flex-col gap-4 w-full overflow-hidden">
+          <div className="flex h-full min-h-0 flex-1 flex-col gap-4 w-full overflow-hidden rounded-[24px] sm:rounded-[28px]">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.5 }}
-              className="flex h-full min-h-0 flex-col overflow-hidden flex-1 w-full"
+              className="flex h-full min-h-0 flex-col overflow-hidden flex-1 w-full rounded-[24px] sm:rounded-[28px]"
             >
               <AIChat />
             </motion.div>

@@ -179,7 +179,7 @@ export const AtlasAuthGate = ({ onAccessChange }: AtlasAuthGateProps) => {
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/88 px-4 backdrop-blur-md">
       <div className="w-full max-w-[24rem] rounded-[1.75rem] border border-border bg-card/95 px-6 py-8 text-center shadow-[0_28px_80px_rgba(0,0,0,0.18)] dark:shadow-[0_28px_80px_rgba(0,0,0,0.48)]">
-        <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10">
+        {/* <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10">
           <Image
             src={chatLogo}
             alt="Atlas"
@@ -187,15 +187,15 @@ export const AtlasAuthGate = ({ onAccessChange }: AtlasAuthGateProps) => {
             height={32}
             className="object-contain"
           />
-        </div>
+        </div> */}
 
         <h2 className="text-xl font-semibold tracking-tight text-foreground">
-          {isConnectStep && ready ? "Connect to use Atlas" : "Unlock Atlas"}
+          {isConnectStep && ready ? "Connect to use Tower" : "Unlock Tower AI"}
         </h2>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
           {isConnectStep
             ? "Connect your wallet on Tower Exchange to continue."
-            : `Pay a one-time ${feeLabel} USDC fee. This permanently unlocks Atlas for this wallet.`}
+            : `Pay a one-time ${feeLabel} USDC fee. This permanently unlocks Tower AI for this wallet.`}
         </p>
 
         {walletAddress ? (

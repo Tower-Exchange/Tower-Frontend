@@ -1779,7 +1779,7 @@ export default function BridgePageContent({
                                   <span className="inline-flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-lg bg-secondary text-muted-foreground">
                                     <Wallet className="h-3.5 w-3.5" />
                                   </span>
-                                  <span className="truncate font-mono text-xs">
+                                  <span className="truncate font-sora text-xs" style={{ fontFamily: "var(--font-sora)" }}>
                                     {address.length > 20
                                       ? `${address.slice(0, 8)}...${address.slice(-6)}`
                                       : address}

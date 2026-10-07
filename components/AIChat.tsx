@@ -1836,7 +1836,7 @@ export const AIChat = () => {
             className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-[#7BB8FF] transition-colors hover:border-border hover:bg-accent sm:h-10 sm:w-10"
             aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
-            {sidebarOpen ? <X size={18} /> : <Menu size={18} className="text-[#7BB8FF]" />}
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} className="text-white" />}
           </button>
         </div>
 
@@ -2152,7 +2152,7 @@ export const AIChat = () => {
                     whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.94 }}
                     onClick={() => handleSendMessage(message)}
-                    className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0C0C0D]"
+                    className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7bb8ff] text-[#0C0C0D]"
                     aria-label="Send message"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
