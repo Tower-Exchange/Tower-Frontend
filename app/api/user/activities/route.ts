@@ -122,14 +122,33 @@ export async function POST(request: NextRequest) {
           ? body.fee_currency_ticker
           : null,
       transaction_hash:
-        typeof body.transaction_hash === "string"
-          ? body.transaction_hash
+        typeof body.transaction_hash === "string" &&
+        body.transaction_hash.trim()
+          ? body.transaction_hash.trim().slice(0, 200)
           : null,
-      timestamp:
-        typeof body.timestamp === "string" && body.timestamp
-          ? body.timestamp
-          : new Date().toISOString(),
+      // Server clock only: a client-supplied timestamp could backdate activity
+      // into a rewards campaign window.
+      timestamp: new Date().toISOString(),
     };
+
+    // One log per (wallet, type, tx hash): replays must not inflate volume.
+    if (row.transaction_hash) {
+      const { data: existing, error: existingError } = await supabaseAdmin
+        .from("activities")
+        .select("*")
+        .eq("wallet_address", wallet)
+        .eq("type", type)
+        .ilike("transaction_hash", row.transaction_hash)
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError) {
+        throw new Error(existingError.message);
+      }
+      if (existing) {
+        return NextResponse.json({ success: true, data: existing });
+      }
+    }
 
     const { data, error } = await supabaseAdmin
       .from("activities")

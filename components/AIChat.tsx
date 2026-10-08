@@ -1,10 +1,21 @@
 "use client";
 import { Fragment, useState, useEffect, useRef, useCallback } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { motion } from "framer-motion";
 import Image from "next/image";
-import { ArrowUp, ArrowDown, Info, Mic } from "lucide-react";
+import {
+  ArrowUp,
+  ArrowDown,
+  Info,
+  Loader2,
+  Mic,
+  Pause,
+  Play,
+  Square,
+} from "lucide-react";
 import {
   sendMessageToAIAgent,
+  transcribeVoiceNote,
+  fetchVoiceReply,
   createAIAgentSession,
   saveChatMessageToHistory,
   getConversationHistory,
@@ -13,7 +24,6 @@ import {
   type AIAgentBridgeRequest,
 } from "@/lib/aiAgentService";
 import { loadProfileData } from "@/lib/profileService";
-import { createPortal } from "react-dom";
 import { registerBridgeActivity, registerBridgeFee, insertActivity } from "@/lib/supabase";
 import { recordExecutorSwapFee } from "@/lib/swapFeeTracking";
 import { v4 as uuidv4 } from "uuid";
@@ -35,12 +45,105 @@ import { useRainbowKitAuth } from "@/lib/use-rainbowkit-auth";
 import { useSolanaWallet } from "@/lib/solanaWalletStore";
 import chatLogo from "@/public/assets/chat_logo.svg";
 
+interface VoiceNote {
+  url: string;
+  durationSec: number;
+}
+
 interface Message {
   id: number;
   text: string;
   isUser: boolean;
   isTyping?: boolean;
+  // Voice note shown instead of the text. On a user message it's their
+  // recording (`text` is the transcript Atlas received); on an Atlas message
+  // it's the spoken reply, with `text` behind a "Show text" toggle.
+  voiceNote?: VoiceNote;
 }
+
+const formatVoiceDuration = (seconds: number) => {
+  const total = Math.max(0, Math.round(seconds));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+};
+
+const VoiceNoteBubble = ({
+  voiceNote,
+  variant = "user",
+}: {
+  voiceNote: VoiceNote;
+  variant?: "user" | "assistant";
+}) => {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [durationSec, setDurationSec] = useState(voiceNote.durationSec);
+  const progress =
+    durationSec > 0 ? Math.min(100, (elapsed / durationSec) * 100) : 0;
+  const isUser = variant === "user";
+
+  const togglePlayback = () => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (audio.paused) {
+      void audio.play();
+    } else {
+      audio.pause();
+    }
+  };
+
+  return (
+    <div className="flex min-w-[11rem] items-center gap-3">
+      <button
+        type="button"
+        onClick={togglePlayback}
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
+          isUser ? "bg-[#081019] text-primary" : "bg-primary text-[#081019]"
+        }`}
+        aria-label={isPlaying ? "Pause voice note" : "Play voice note"}
+      >
+        {isPlaying ? (
+          <Pause className="h-3.5 w-3.5 fill-current" />
+        ) : (
+          <Play className="ml-0.5 h-3.5 w-3.5 fill-current" />
+        )}
+      </button>
+      <div
+        className={`h-1 flex-1 overflow-hidden rounded-full ${
+          isUser ? "bg-[#081019]/20" : "bg-primary/20"
+        }`}
+      >
+        <div
+          className={`h-full rounded-full ${isUser ? "bg-[#081019]" : "bg-primary"}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+      <span className="text-xs tabular-nums">
+        {formatVoiceDuration(
+          isPlaying || elapsed > 0 ? elapsed : durationSec,
+        )}
+      </span>
+      <audio
+        ref={audioRef}
+        src={voiceNote.url}
+        preload="metadata"
+        onLoadedMetadata={(event) => {
+          const { duration } = event.currentTarget;
+          if (Number.isFinite(duration) && duration > 0) {
+            setDurationSec(duration);
+          }
+        }}
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onTimeUpdate={(event) => setElapsed(event.currentTarget.currentTime)}
+        onEnded={() => {
+          setIsPlaying(false);
+          setElapsed(0);
+        }}
+        className="hidden"
+      />
+    </div>
+  );
+};
 
 interface ChatSession {
   id: string;
@@ -93,6 +196,9 @@ const isGenericSessionTitle = (title: string) => {
   const normalizedTitle = title.trim();
   return !normalizedTitle || GENERIC_CHAT_TITLES.has(normalizedTitle);
 };
+
+// Atlas transcribes up to 60s per voice note; stop recording there.
+const MAX_VOICE_NOTE_MS = 60_000;
 
 const toAssistantErrorReply = (
   message: string,
@@ -402,7 +508,15 @@ export const AIChat = () => {
   const [isAtTop, setIsAtTop] = useState(true);
   const [showInfoTooltip, setShowInfoTooltip] = useState(false);
   const [isTouchDevice, setIsTouchDevice] = useState(false);
-  const [showVoiceChatComingSoon, setShowVoiceChatComingSoon] = useState(false);
+  const [voiceState, setVoiceState] = useState<
+    "idle" | "recording" | "transcribing"
+  >("idle");
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceStopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const handleSendMessageRef = useRef<
+    ((text: string, voiceNote?: VoiceNote) => Promise<void>) | null
+  >(null);
+  const voiceNoteUrlsRef = useRef<string[]>([]);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLTextAreaElement>(null);
   const reportedSwapErrorRef = useRef<string | null>(null);
@@ -736,7 +850,7 @@ export const AIChat = () => {
     }
   }, [showInfoTooltip, isTouchDevice]);
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string, voiceNote?: VoiceNote) => {
     if (!text.trim()) return;
     const walletAddress = user?.wallet?.address?.toLowerCase();
     if (!walletAddress) {
@@ -774,6 +888,7 @@ export const AIChat = () => {
       id: Date.now(),
       text: text,
       isUser: true,
+      ...(voiceNote ? { voiceNote } : {}),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -816,10 +931,26 @@ export const AIChat = () => {
       console.log("AI Response received:", response);
       console.log("Response data:", response.data);
 
+      // Voice in, voice out: answer a voice note with Atlas's spoken reply.
+      // Skip it if the reply text was filtered (the audio would still say the
+      // hidden lines), and fall back to plain text if the audio fails.
+      let replyVoiceNote: VoiceNote | undefined;
+      if (voiceNote && response.audio_id && response.reply === rawResponse.reply) {
+        try {
+          const audio = await fetchVoiceReply(response.audio_id);
+          const url = URL.createObjectURL(audio);
+          voiceNoteUrlsRef.current.push(url);
+          replyVoiceNote = { url, durationSec: 0 };
+        } catch (voiceError) {
+          console.error("Atlas voice reply failed, showing text:", voiceError);
+        }
+      }
+
       const aiResponse: Message = {
         id: Date.now() + 1,
         text: response.reply,
         isUser: false,
+        ...(replyVoiceNote ? { voiceNote: replyVoiceNote } : {}),
       };
       setMessages((prev) => [...prev, aiResponse]);
 
@@ -1220,6 +1351,139 @@ export const AIChat = () => {
       setIsLoading(false);
     }
   };
+  // The recorder's onstop fires after later renders; always send with the
+  // latest handler so it sees the current session and messages.
+  handleSendMessageRef.current = handleSendMessage;
+
+  const stopVoiceRecording = () => {
+    if (voiceStopTimerRef.current) {
+      clearTimeout(voiceStopTimerRef.current);
+      voiceStopTimerRef.current = null;
+    }
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  };
+
+  const startVoiceRecording = async () => {
+    const walletAddress = user?.wallet?.address?.toLowerCase();
+    if (!walletAddress) {
+      pushAssistantMessage("Please connect your wallet first");
+      return;
+    }
+    if (atlasAuthRequired && !hasAtlasAccess) {
+      return;
+    }
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
+      pushAssistantMessage("Voice notes aren't supported in this browser.");
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      pushAssistantMessage(
+        "Microphone access was blocked. Allow it in your browser to send voice notes.",
+      );
+      return;
+    }
+
+    // Chrome/Firefox record webm/opus, Safari records mp4; Atlas decodes all.
+    const mimeType = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ].find((type) => MediaRecorder.isTypeSupported(type));
+    const recordingStartedAt = Date.now();
+    const recorder = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 32_000,
+    });
+    const chunks: Blob[] = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((track) => track.stop());
+      mediaRecorderRef.current = null;
+
+      const audio = new Blob(chunks, {
+        type: recorder.mimeType || mimeType || "audio/webm",
+      });
+      if (audio.size === 0) {
+        setVoiceState("idle");
+        return;
+      }
+
+      setVoiceState("transcribing");
+      let transcript = "";
+      try {
+        transcript = await transcribeVoiceNote(audio, walletAddress);
+      } catch (error) {
+        pushAssistantMessage(
+          error instanceof Error ? error.message : "Could not transcribe audio",
+        );
+        setVoiceState("idle");
+        return;
+      }
+      setVoiceState("idle");
+
+      if (!transcript) {
+        pushAssistantMessage(
+          "I couldn't hear anything in that voice note. Please try again.",
+        );
+        return;
+      }
+      const url = URL.createObjectURL(audio);
+      voiceNoteUrlsRef.current.push(url);
+      await handleSendMessageRef.current?.(transcript, {
+        url,
+        durationSec: (Date.now() - recordingStartedAt) / 1000,
+      });
+    };
+
+    mediaRecorderRef.current = recorder;
+    recorder.start();
+    setVoiceState("recording");
+    voiceStopTimerRef.current = setTimeout(stopVoiceRecording, MAX_VOICE_NOTE_MS);
+  };
+
+  const handleVoiceButtonClick = () => {
+    if (voiceState === "recording") {
+      stopVoiceRecording();
+    } else if (voiceState === "idle") {
+      void startVoiceRecording();
+    }
+  };
+
+  // Leaving the page mid-recording: release the mic and drop the note.
+  useEffect(() => {
+    const voiceNoteUrls = voiceNoteUrlsRef.current;
+    return () => {
+      voiceNoteUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (voiceStopTimerRef.current) {
+        clearTimeout(voiceStopTimerRef.current);
+      }
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        if (recorder.state !== "inactive") {
+          recorder.stop();
+        }
+        recorder.stream.getTracks().forEach((track) => track.stop());
+      }
+    };
+  }, []);
 
   const handlePromptClick = (prompt: string) => {
     setActivePrompt(prompt);
@@ -1572,56 +1836,10 @@ export const AIChat = () => {
             className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-secondary text-[#7BB8FF] transition-colors hover:border-border hover:bg-accent sm:h-10 sm:w-10"
             aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
           >
-            {sidebarOpen ? <X size={18} /> : <Menu size={18} className="text-[#7BB8FF]" />}
+            {sidebarOpen ? <X size={18} /> : <Menu size={18} className="text-white" />}
           </button>
         </div>
 
-        {typeof document !== "undefined" &&
-          createPortal(
-            <AnimatePresence>
-              {showVoiceChatComingSoon && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[220] flex items-center justify-center bg-black/60 px-4 backdrop-blur-sm"
-                  onClick={() => setShowVoiceChatComingSoon(false)}
-                >
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.96, y: 20 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.96, y: 20 }}
-                    transition={{ duration: 0.2 }}
-                    className="relative w-full max-w-sm rounded-[1.75rem] border border-border bg-card/95 px-6 py-8 text-center shadow-2xl backdrop-blur-md"
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setShowVoiceChatComingSoon(false)}
-                      className="absolute right-4 top-4 inline-flex h-8 w-8 items-center justify-center rounded-full border border-border bg-secondary/80 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                      aria-label="Close"
-                    >
-                      <X size={16} />
-                    </button>
-                    <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-primary/30 bg-primary/10">
-                      <Mic className="h-7 w-7 text-primary" />
-                    </div>
-                    <h2 className="text-xl font-semibold tracking-tight text-foreground">
-                      Voice chat is coming soon
-                    </h2>
-                    <button
-                      type="button"
-                      onClick={() => setShowVoiceChatComingSoon(false)}
-                      className="mt-6 inline-flex items-center justify-center rounded-full bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-100"
-                    >
-                      Got it
-                    </button>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>,
-            document.body,
-          )}
 
         <div className="relative flex-1 min-h-0 overflow-hidden">
           <div
@@ -1662,7 +1880,26 @@ export const AIChat = () => {
                               : "rounded-[20px] border border-border bg-card/92 px-4 py-4 text-foreground backdrop-blur-xl sm:rounded-[24px] sm:px-5"
                         }`}
                       >
-                        {msg.text === "Trading Volume" ? (
+                        {msg.voiceNote ? (
+                          msg.isUser ? (
+                            <VoiceNoteBubble voiceNote={msg.voiceNote} />
+                          ) : (
+                            <div>
+                              <VoiceNoteBubble
+                                voiceNote={msg.voiceNote}
+                                variant="assistant"
+                              />
+                              <details className="mt-2 text-xs text-muted-foreground">
+                                <summary className="cursor-pointer select-none">
+                                  Show text
+                                </summary>
+                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-foreground wrap-break-word">
+                                  {msg.text}
+                                </p>
+                              </details>
+                            </div>
+                          )
+                        ) : msg.text === "Trading Volume" ? (
                           <div>
                             <div className="mb-4 flex items-center justify-between">
                               <div className="flex items-center gap-2">
@@ -1915,7 +2152,7 @@ export const AIChat = () => {
                     whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.94 }}
                     onClick={() => handleSendMessage(message)}
-                    className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white text-[#0C0C0D]"
+                    className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#7bb8ff] text-[#0C0C0D]"
                     aria-label="Send message"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
@@ -1924,11 +2161,31 @@ export const AIChat = () => {
                     type="button"
                     whileHover={{ scale: 1.06 }}
                     whileTap={{ scale: 0.94 }}
-                    onClick={() => setShowVoiceChatComingSoon(true)}
-                    className="mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-border bg-card text-foreground transition-colors hover:bg-accent"
-                    aria-label="Voice chat"
+                    onClick={handleVoiceButtonClick}
+                    disabled={
+                      voiceState === "transcribing" ||
+                      (voiceState === "idle" && isLoading)
+                    }
+                    className={`mb-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                      voiceState === "recording"
+                        ? "animate-pulse border-red-500 bg-red-500 text-white hover:bg-red-600"
+                        : "border-border bg-card text-foreground hover:bg-accent"
+                    }`}
+                    aria-label={
+                      voiceState === "recording"
+                        ? "Stop recording and send voice note"
+                        : voiceState === "transcribing"
+                          ? "Transcribing voice note"
+                          : "Record a voice note"
+                    }
                   >
-                    <Mic className="h-3.5 w-3.5" />
+                    {voiceState === "recording" ? (
+                      <Square className="h-3 w-3 fill-current" />
+                    ) : voiceState === "transcribing" ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Mic className="h-3.5 w-3.5" />
+                    )}
                   </motion.button>
                 </div>
               </div>

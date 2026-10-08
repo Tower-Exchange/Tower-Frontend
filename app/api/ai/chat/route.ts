@@ -1412,6 +1412,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const sessionWallet = wallet.toLowerCase();
+
     chatUrl = getTowerAiChatUrl();
     if (!chatUrl) {
       return aiBackendUnconfiguredResponse();
@@ -1428,7 +1430,7 @@ export async function POST(request: NextRequest) {
       typeof rawBody.message === "string"
         ? rawBody.message.replace(EVM_ADDRESS_IN_TEXT_PATTERN, (match) => {
             const normalized = normalizeWalletAddress(match);
-            return normalized && normalized === wallet ? match : wallet;
+            return normalized && normalized === sessionWallet ? match : sessionWallet;
           })
         : "";
 
@@ -1438,7 +1440,7 @@ export async function POST(request: NextRequest) {
 
     const upstreamBody = buildTowerAiChatRequestBody(
       rawBody,
-      wallet,
+      sessionWallet,
       sanitizedMessage,
     );
 
@@ -1523,6 +1525,10 @@ export async function POST(request: NextRequest) {
       const enrichedSwapData = await enrichStableSwapQuote(request, body, data);
       const enrichedBridgeData = enrichBridgeExecution(body, enrichedSwapData);
       enrichedData = overrideUnsupportedSolanaBridgeReply(body, enrichedBridgeData);
+      // Atlas's audio_id speaks its original reply; drop it if we rewrote the text.
+      if (enrichedData.reply !== data.reply && "audio_id" in enrichedData) {
+        enrichedData = { ...enrichedData, audio_id: null };
+      }
     } catch (enrichmentError) {
       console.error("[ai/chat] Response enrichment failed:", enrichmentError);
     }

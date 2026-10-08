@@ -33,6 +33,18 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      {
+        source: "/mcp",
+        destination: "https://169-58-244-12.sslip.io/mcp",
+      },
+      {
+        source: "/v1/human-proof/:path*",
+        destination: "https://169-58-244-12.sslip.io/v1/human-proof/:path*",
+      },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -50,6 +50,8 @@ export interface AIAgentResponse {
   reply: string;
   userid: string;
   session_id: string;
+  // Present when Atlas can speak this reply; fetch it with fetchVoiceReply.
+  audio_id?: string | null;
   data?: {
     action?: string;
     balances?: Array<{
@@ -231,6 +233,61 @@ export const sendMessageToAIAgent = async (
     console.error("Error communicating with Tower AI agent:", error);
     throw error;
   }
+};
+
+/**
+ * Turn a recorded voice note into text via Atlas. The caller sends the
+ * returned transcript through sendMessageToAIAgent like a typed message.
+ */
+export const transcribeVoiceNote = async (
+  audio: Blob,
+  walletAddress: string
+): Promise<string> => {
+  const canonicalWallet = canonicalizeAiWalletAddress(walletAddress);
+  if (canonicalWallet) {
+    await ensureWalletSession(canonicalWallet);
+  }
+
+  const extension = audio.type.includes("mp4")
+    ? "m4a"
+    : audio.type.includes("ogg")
+      ? "ogg"
+      : "webm";
+  const form = new FormData();
+  form.append("file", audio, `voice-note.${extension}`);
+
+  const response = await fetch("/api/ai/stt", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new Error(await readAgentErrorMessage(response));
+  }
+
+  const data = (await response.json()) as { transcript?: string };
+  return (data.transcript || "").trim();
+};
+
+/**
+ * Fetch the spoken version of an Atlas reply (audio/wav) by its audio_id.
+ */
+export const fetchVoiceReply = async (audioId: string): Promise<Blob> => {
+  const response = await fetch("/api/ai/tts", {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ audio_id: audioId }),
+  });
+
+  if (!response.ok) {
+    throw new Error(await readAgentErrorMessage(response));
+  }
+
+  return response.blob();
 };
 
 /**
