@@ -568,19 +568,34 @@ export const getDe1DexInfo = () =>
     supportedTokens: DE1_SUPPORTED_TOKENS,
   }) as const;
 
-export const de1QuoteToSwapQuote = (quote: De1Quote) => ({
-  ...quote,
-  routeOptions: [
-    {
-      dexId: DE1_DEX_ID,
-      dexName: DE1_DEX_NAME,
-      outputAmount: quote.outputAmount,
-      routeType: quote.route.type,
-      gasEstimate: quote.gasEstimate,
-      quote,
-    },
-  ],
-});
+export const de1QuoteToSwapQuote = (quote: De1Quote) => {
+  const quotedAt = new Date(quote.de1.quotedAt).toISOString();
+  const expiresAt = new Date(quote.de1.expiresAt).toISOString();
+  const validForSeconds = Math.max(
+    0,
+    Math.floor((quote.de1.expiresAt - quote.de1.quotedAt) / 1_000),
+  );
+  const normalizedQuote = {
+    ...quote,
+    quotedAt,
+    expiresAt,
+    validForSeconds,
+  };
+
+  return {
+    ...normalizedQuote,
+    routeOptions: [
+      {
+        dexId: DE1_DEX_ID,
+        dexName: DE1_DEX_NAME,
+        outputAmount: quote.outputAmount,
+        routeType: quote.route.type,
+        gasEstimate: quote.gasEstimate,
+        quote: normalizedQuote,
+      },
+    ],
+  };
+};
 
 export const isDe1Quote = (quote: unknown): quote is De1Quote => {
   if (!isRecord(quote) || !isRecord(quote.de1)) {

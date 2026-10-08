@@ -18,6 +18,13 @@ import {
   getBadgeErrorLabel,
   type SquireBadgeStatus,
 } from "@/lib/squireBadge";
+import {
+  claimPioneerBadge,
+  fetchPioneerBadgeStatus,
+  PIONEER_BADGE_IDS,
+  type PioneerBadgeId,
+  type PioneerBadgeStatus,
+} from "@/lib/pioneerBadge";
 
 type Badge = {
   id: string;
@@ -30,7 +37,15 @@ type Badge = {
   isMystery?: boolean;
   requirements?: string[];
   perks?: string;
+  pioneerStatus?: PioneerBadgeStatus;
 };
+
+type PioneerBadgeStatuses = Partial<
+  Record<PioneerBadgeId, PioneerBadgeStatus>
+>;
+
+const isPioneerBadgeId = (badgeId: string): badgeId is PioneerBadgeId =>
+  (PIONEER_BADGE_IDS as readonly string[]).includes(badgeId);
 
 const initialBadges: Badge[] = [
   {
@@ -74,9 +89,8 @@ const postArctoberBadges: Badge[] = [
     isClaimed: false,
     isInteractive: true,
     requirements: [
-      "Eligibility criteria to be revealed soon",
-      // "Completed > 20 swap transactions",
-      // "Reached $1000 total volume swapped",
+      "Complete at least 10 swap transactions",
+      "Accumulate at least $1,000 in total swap volume",
     ],
     perks: "To be revealed soon",
   },
@@ -89,9 +103,8 @@ const postArctoberBadges: Badge[] = [
     isClaimed: false,
     isInteractive: true,
     requirements: [
-      "Eligibility criteria to be revealed soon",
-      // "Completed >20 bridge transactions",
-      // "Reached $1000 total volume bridged",
+      "Complete at least 10 bridge transactions",
+      "Accumulate at least $1,000 in total bridge volume",
     ],
     perks: "To be revealed soon",
   },
@@ -102,12 +115,29 @@ const getBadgeDescription = (isClaimed: boolean) =>
     ? "You've taken your first step on Tower.\nYou're a real user."
     : "This badge is for real users who have\ntaken their first step on Tower.";
 
+const formatUsd = (value: number) =>
+  new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 2,
+  }).format(value);
+
 const BadgeDetailsModal = ({
   badge,
   onClose,
+  onClaim,
+  canClaim = false,
+  isCheckingEligibility = false,
+  isClaiming = false,
+  claimError = null,
 }: {
   badge: Badge | null;
   onClose: () => void;
+  onClaim?: () => void;
+  canClaim?: boolean;
+  isCheckingEligibility?: boolean;
+  isClaiming?: boolean;
+  claimError?: string | null;
 }) => {
   const [activeTab, setActiveTab] = useState<"requirements" | "perks">("requirements");
 
@@ -122,7 +152,32 @@ const BadgeDetailsModal = ({
     badge?.image ??
     (badge?.id === "squire" ? badgeClaimedImage : badge?.isClaimed ? badgeClaimedImage : badgeUnclaimedImage);
 
-  const hasRequirements = Boolean(badge?.requirements && badge.requirements.length > 0);
+  const requirements = badge?.pioneerStatus
+    ? [
+        {
+          label: `${badge.pioneerStatus.transactionCount} / ${
+            badge.pioneerStatus.minimumTransactionCount
+          } successful ${
+            badge.id === "swap-pioneer" ? "swap" : "bridge"
+          } transactions`,
+          isComplete:
+            badge.pioneerStatus.transactionCount >=
+            badge.pioneerStatus.minimumTransactionCount,
+        },
+        {
+          label: `${formatUsd(badge.pioneerStatus.volumeUsd)} / ${formatUsd(
+            badge.pioneerStatus.minimumVolumeUsd,
+          )} in total ${badge.id === "swap-pioneer" ? "swap" : "bridge"} volume`,
+          isComplete:
+            badge.pioneerStatus.volumeUsd >= badge.pioneerStatus.minimumVolumeUsd,
+        },
+      ]
+    : (badge?.requirements ?? []).map((label) => ({
+        label,
+        isComplete: true,
+      }));
+  const hasRequirements = requirements.length > 0;
+  const isPioneerBadge = isPioneerBadgeId(badge?.id ?? "");
 
   return (
     <AnimatePresence>
@@ -146,14 +201,22 @@ const BadgeDetailsModal = ({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 18, scale: 0.98 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
-            className="fixed inset-0 z-[91] flex items-center justify-center px-4 py-6"
+            className="fixed inset-0 z-[91] flex items-center justify-center px-4 py-3 sm:py-6"
           >
-            <div className="relative w-full max-w-[540px] rounded-[28px] border border-border bg-[#14181f] px-7 pb-9 pt-12 shadow-2xl sm:px-10">
+            <div
+              className={`relative max-h-[calc(100dvh-1.5rem)] w-full overflow-y-auto border border-border bg-[#14181f] shadow-2xl ${
+                isPioneerBadge
+                  ? "max-w-[460px] rounded-[24px] px-5 pb-5 pt-8 sm:px-7"
+                  : "max-w-[540px] rounded-[28px] px-7 pb-9 pt-12 sm:px-10"
+              }`}
+            >
               <button
                 type="button"
                 onClick={onClose}
                 aria-label="Close badge details"
-                className="absolute right-7 top-7 inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent"
+                className={`absolute inline-flex h-8 w-8 items-center justify-center rounded-full text-foreground transition-colors hover:bg-accent ${
+                  isPioneerBadge ? "right-5 top-5" : "right-7 top-7"
+                }`}
               >
                 <X size={20} strokeWidth={2} />
               </button>
@@ -164,17 +227,37 @@ const BadgeDetailsModal = ({
                   alt={`${badge.name} badge`}
                   width={128}
                   height={144}
-                  className="h-auto w-[116px] object-contain sm:w-[128px]"
+                  className={`h-auto object-contain ${
+                    isPioneerBadge
+                      ? "w-[82px] sm:w-[92px]"
+                      : "w-[116px] sm:w-[128px]"
+                  }`}
                 />
-                <h3 className="mt-4 text-2xl font-semibold leading-none text-foreground sm:text-[26px]">
+                <h3
+                  className={`font-semibold leading-none text-foreground ${
+                    isPioneerBadge
+                      ? "mt-3 text-xl sm:text-[22px]"
+                      : "mt-4 text-2xl sm:text-[26px]"
+                  }`}
+                >
                   {badge.name}
                 </h3>
-                <p className="mt-3 max-w-[380px] whitespace-pre-line text-center text-sm font-medium leading-snug text-foreground sm:text-base">
+                <p
+                  className={`max-w-[380px] whitespace-pre-line text-center font-medium leading-snug text-foreground ${
+                    isPioneerBadge
+                      ? "mt-2 text-sm"
+                      : "mt-3 text-sm sm:text-base"
+                  }`}
+                >
                   {badge.description ?? getBadgeDescription(badge.isClaimed)}
                 </p>
 
                 {hasRequirements ? (
-                  <div className="mt-6 inline-flex items-center rounded-full bg-[#14181f] p-1 border border-white/5">
+                  <div
+                    className={`inline-flex items-center rounded-full border border-white/5 bg-[#14181f] p-1 ${
+                      isPioneerBadge ? "mt-4" : "mt-6"
+                    }`}
+                  >
                     <button
                       type="button"
                       onClick={() => setActiveTab("requirements")}
@@ -204,16 +287,38 @@ const BadgeDetailsModal = ({
                   </div>
                 )}
 
-                <div className="mt-5 w-full rounded-[24px] border border-[#828282]/22 p-5 text-left sm:p-6">
-                  {activeTab === "requirements" && badge.requirements ? (
-                    <div className="flex flex-col gap-4">
-                      {badge.requirements.map((req, i) => (
+                <div
+                  className={`w-full rounded-[24px] border border-[#828282]/22 text-left ${
+                    isPioneerBadge
+                      ? "mt-3 p-4 sm:p-5"
+                      : "mt-5 p-5 sm:p-6"
+                  }`}
+                >
+                  {activeTab === "requirements" && hasRequirements ? (
+                    <div
+                      className={`flex flex-col ${
+                        isPioneerBadge ? "gap-3" : "gap-4"
+                      }`}
+                    >
+                      {requirements.map((requirement, i) => (
                         <div key={i} className="flex items-center gap-3">
-                          <div className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/15 text-white">
+                          <div
+                            className={`inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                              requirement.isComplete
+                                ? "bg-emerald-500/20 text-emerald-400"
+                                : "bg-white/10 text-muted-foreground"
+                            }`}
+                          >
                             <Check size={12} strokeWidth={3} />
                           </div>
-                          <p className="text-sm font-medium text-foreground sm:text-base">
-                            {req}
+                          <p
+                            className={`font-medium text-foreground ${
+                              isPioneerBadge
+                                ? "text-sm"
+                                : "text-sm sm:text-base"
+                            }`}
+                          >
+                            {requirement.label}
                           </p>
                         </div>
                       ))}
@@ -250,6 +355,33 @@ const BadgeDetailsModal = ({
                     </div>
                   )}
                 </div>
+                {badge.id === "swap-pioneer" || badge.id === "bridge-pioneer" ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={onClaim}
+                      disabled={!canClaim || isClaiming}
+                      className={`inline-flex w-full items-center justify-center rounded-full px-6 text-sm font-semibold transition-opacity sm:text-base ${
+                        canClaim && !isClaiming
+                          ? "bg-[#78AFFF] text-black hover:opacity-90"
+                          : "cursor-not-allowed bg-white/10 text-muted-foreground"
+                      } ${isPioneerBadge ? "mt-4 h-10" : "mt-5 h-11"}`}
+                    >
+                      {badge.isClaimed
+                        ? "Claimed"
+                        : isClaiming
+                          ? "Claiming Badge..."
+                          : isCheckingEligibility
+                            ? "Checking Eligibility..."
+                            : "Claim Badge"}
+                    </button>
+                    {claimError ? (
+                      <p className="mt-2 text-center text-sm font-medium text-[#ff9a9a]">
+                        {claimError}
+                      </p>
+                    ) : null}
+                  </>
+                ) : null}
               </div>
             </div>
           </motion.div>
@@ -467,6 +599,14 @@ const Badges = ({
   const [isClaimingSquireBadge, setIsClaimingSquireBadge] = useState(false);
   const [showClaimCongratulations, setShowClaimCongratulations] = useState(false);
   const [badgeError, setBadgeError] = useState<string | null>(null);
+  const [pioneerBadgeStatuses, setPioneerBadgeStatuses] =
+    useState<PioneerBadgeStatuses>({});
+  const [isCheckingPioneerBadges, setIsCheckingPioneerBadges] = useState(false);
+  const [claimingPioneerBadgeId, setClaimingPioneerBadgeId] =
+    useState<PioneerBadgeId | null>(null);
+  const [pioneerBadgeError, setPioneerBadgeError] = useState<string | null>(
+    null,
+  );
   const normalizedWalletAddress = walletAddress?.trim().toLowerCase() ?? null;
 
   const handleCloseCountdown = useCallback(() => {
@@ -525,6 +665,72 @@ const Badges = ({
   }, [normalizedWalletAddress]);
 
   useEffect(() => {
+    if (!normalizedWalletAddress) {
+      setPioneerBadgeStatuses({});
+      setPioneerBadgeError(null);
+      setIsCheckingPioneerBadges(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadPioneerBadgeStatuses = async () => {
+      setIsCheckingPioneerBadges(true);
+      setPioneerBadgeError(null);
+
+      try {
+        const results = await Promise.all(
+          PIONEER_BADGE_IDS.map(async (badgeId) => ({
+            badgeId,
+            ...(await fetchPioneerBadgeStatus(normalizedWalletAddress, badgeId)),
+          })),
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        const statuses: PioneerBadgeStatuses = {};
+        const failedResult = results.find(
+          ({ response, result }) =>
+            !response.ok || !result.success || !result.badge,
+        );
+
+        for (const { badgeId, response, result } of results) {
+          if (response.ok && result.success && result.badge) {
+            statuses[badgeId] = result.badge;
+          }
+        }
+
+        setPioneerBadgeStatuses(statuses);
+
+        if (failedResult) {
+          setPioneerBadgeError(
+            getBadgeErrorLabel(failedResult.result.message, failedResult.result.debug),
+          );
+        }
+      } catch (error) {
+        console.error("Failed to load pioneer badge statuses:", error);
+
+        if (!cancelled) {
+          setPioneerBadgeStatuses({});
+          setPioneerBadgeError("Unable to check badge eligibility.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsCheckingPioneerBadges(false);
+        }
+      }
+    };
+
+    void loadPioneerBadgeStatuses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [normalizedWalletAddress]);
+
+  useEffect(() => {
     onSquireBadgeStatusChange?.(squireBadgeStatus);
   }, [onSquireBadgeStatusChange, squireBadgeStatus]);
 
@@ -571,12 +777,36 @@ const Badges = ({
               ...badge,
               isClaimed: squireBadgeStatus?.isClaimed === true,
             }
-          : badge,
+          : isPioneerBadgeId(badge.id)
+            ? {
+                ...badge,
+                isClaimed: pioneerBadgeStatuses[badge.id]?.isClaimed === true,
+                pioneerStatus: pioneerBadgeStatuses[badge.id],
+              }
+            : badge,
       ),
-    [activeBadgesList, squireBadgeStatus?.isClaimed],
+    [
+      activeBadgesList,
+      pioneerBadgeStatuses,
+      squireBadgeStatus?.isClaimed,
+    ],
   );
   const selectedBadge =
     displayBadges.find((badge) => badge.id === selectedBadgeId) ?? null;
+  const selectedPioneerBadgeId =
+    selectedBadge && isPioneerBadgeId(selectedBadge.id)
+      ? selectedBadge.id
+      : null;
+  const isClaimingPioneerBadge =
+    selectedPioneerBadgeId === claimingPioneerBadgeId;
+  const canClaimPioneerBadge =
+    isWalletConnected &&
+    Boolean(normalizedWalletAddress) &&
+    Boolean(selectedPioneerBadgeId) &&
+    selectedBadge?.pioneerStatus?.isEligible === true &&
+    selectedBadge.pioneerStatus.isClaimed !== true &&
+    !isCheckingPioneerBadges &&
+    !isClaimingPioneerBadge;
   const canClaimSquireBadge =
     isWalletConnected &&
     Boolean(normalizedWalletAddress) &&
@@ -624,6 +854,48 @@ const Badges = ({
       setBadgeError("Unable to claim badge right now.");
     } finally {
       setIsClaimingSquireBadge(false);
+    }
+  };
+
+  const handleClaimPioneerBadge = async () => {
+    if (
+      !normalizedWalletAddress ||
+      !selectedPioneerBadgeId ||
+      !canClaimPioneerBadge
+    ) {
+      return;
+    }
+
+    setClaimingPioneerBadgeId(selectedPioneerBadgeId);
+    setPioneerBadgeError(null);
+
+    try {
+      const { response, result } = await claimPioneerBadge(
+        normalizedWalletAddress,
+        selectedPioneerBadgeId,
+      );
+
+      if (!response.ok || !result.success || !result.badge) {
+        setPioneerBadgeError(getBadgeErrorLabel(result.message, result.debug));
+
+        if (result.badge) {
+          setPioneerBadgeStatuses((current) => ({
+            ...current,
+            [selectedPioneerBadgeId]: result.badge,
+          }));
+        }
+        return;
+      }
+
+      setPioneerBadgeStatuses((current) => ({
+        ...current,
+        [selectedPioneerBadgeId]: result.badge,
+      }));
+    } catch (error) {
+      console.error("Failed to claim pioneer badge:", error);
+      setPioneerBadgeError("Unable to claim badge right now.");
+    } finally {
+      setClaimingPioneerBadgeId(null);
     }
   };
 
@@ -745,6 +1017,11 @@ const Badges = ({
       <BadgeDetailsModal
         badge={selectedBadge}
         onClose={() => setSelectedBadgeId(null)}
+        onClaim={handleClaimPioneerBadge}
+        canClaim={canClaimPioneerBadge}
+        isCheckingEligibility={isCheckingPioneerBadges}
+        isClaiming={isClaimingPioneerBadge}
+        claimError={pioneerBadgeError}
       />
       <ClaimingBadgeModal isOpen={isClaimingSquireBadge} />
       <BadgeCongratulationsModal

@@ -200,12 +200,15 @@ export async function handleSwapBuildTxPost(
       isKyberQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     const canReuseSubmittedUniswapQuote =
       isUniswapQuote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
+    const canReuseSubmittedDe1Quote =
+      isDe1Quote(submittedQuote) && !getExpiredQuoteError(submittedQuote);
     if (
       !refreshed.ok &&
       !canReuseSubmittedDzapQuote &&
       !canReuseSubmittedXylonetQuote &&
       !canReuseSubmittedKyberQuote &&
-      !canReuseSubmittedUniswapQuote
+      !canReuseSubmittedUniswapQuote &&
+      !canReuseSubmittedDe1Quote
     ) {
       return refreshed.error;
     }
