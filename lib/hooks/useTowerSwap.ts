@@ -1,4 +1,6 @@
 import { useState, useCallback } from 'react';
+import type { Address } from "viem";
+import type { De1Quote } from "@/lib/de1Dex";
 
 export interface SwapQuote {
   inputToken: string;
@@ -187,6 +189,24 @@ const fetchDe1QuoteInBrowser = async (params: {
     console.warn("[useTowerSwap] browser De1 quote failed:", error);
     return null;
   }
+};
+
+const isDe1SwapQuote = (quote: SwapQuote) => quote.de1?.source === "de1";
+
+const buildDe1SwapTransactionInBrowser = async (
+  quote: SwapQuote,
+  userAddress: string,
+) => {
+  if (typeof window === "undefined") {
+    throw new Error("De1 swaps must be built in the browser.");
+  }
+
+  const { buildDe1SwapTransaction } = await import("@/lib/de1Dex");
+
+  return buildDe1SwapTransaction({
+    quote: quote as De1Quote,
+    userAddress: userAddress as Address,
+  });
 };
 
 /**
@@ -394,6 +414,21 @@ export function useTowerSwap(_options: UseTowerSwapOptions = {}) {
       setError(null);
 
       try {
+        // De1 permits browser CORS but its Cloudflare WAF rejects requests
+        // originating from our production server. Build directly in-browser,
+        // just as we do when fetching a De1 quote.
+        if (isDe1SwapQuote(quote)) {
+          const transactions = await buildDe1SwapTransactionInBrowser(
+            quote,
+            userAddress,
+          );
+
+          return {
+            approval: transactions.approval || null,
+            swap: transactions.swap,
+          };
+        }
+
         const response = await fetch(`${swapApiBaseUrl}/build-tx`, {
           method: 'POST',
           headers: {
