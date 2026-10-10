@@ -631,7 +631,24 @@ export async function POST(request: NextRequest) {
       !Array.isArray(body.qualification)
         ? (body.qualification as Record<string, unknown>)
         : {};
-    const minUsd = toNumber(qualification.minUsd);
+    // A bad cutoff/size must be a visible config error (400), never silently
+    // ignored: an ignored `since` would let pre-campaign activity count.
+    const minUsd =
+      qualification.minUsd === 0
+        ? null // 0 simply means "no minimum"
+        : readThreshold(qualification.minUsd, "minUsd", {
+            integer: false,
+            max: MAX_MIN_VOLUME_USD,
+          });
+    let since: string | null = null;
+    if (qualification.since !== undefined && qualification.since !== null) {
+      since = toIso(qualification.since);
+      if (!since) {
+        throw new BadRequestError(
+          "qualification.since must be an ISO date-time, e.g. 2026-10-12T00:00:00Z",
+        );
+      }
+    }
     const network =
       typeof body.subject.network === "string" ? body.subject.network : null;
 
@@ -641,8 +658,8 @@ export async function POST(request: NextRequest) {
       key,
       mode: modeFromNetwork(network),
       qualification,
-      since: toIso(qualification.since),
-      minUsd: minUsd > 0 ? minUsd : null,
+      since,
+      minUsd,
       deadline: startedAt + TOTAL_BUDGET_MS,
     };
 
