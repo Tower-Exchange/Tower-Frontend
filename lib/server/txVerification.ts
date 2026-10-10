@@ -108,7 +108,8 @@ export function resolveChain(
   networkName: string | null | undefined,
   mode: NetworkMode,
 ): Chain | null {
-  const name = (networkName ?? "").trim().toLowerCase();
+  // Bridge activity stores display names ("Base Sepolia"); chain ids use hyphens.
+  const name = (networkName ?? "").trim().toLowerCase().replace(/\s+/g, "-");
   if (!name) return null;
   if (name === "arc") return mode === "mainnet" ? arcMainnet : arcTestnet;
   return (mode === "mainnet" ? MAINNET_CHAINS : TESTNET_CHAINS)[name] ?? null;
